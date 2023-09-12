@@ -161,7 +161,7 @@ dmua = hBasis.Map('M->S',mua1 - mua);
 
 x = [scmua;sckap];
 logx = log(x);
-p = length(x);
+p = length(x); 
 step = 1.0; % initial step length for line search
 
 %% Initialise regularisation
