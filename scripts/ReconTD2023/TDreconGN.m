@@ -266,8 +266,7 @@ while (itr <= itrmax) & (err > GNtol*err0) & (errp-err > GNtol)
     bmus_itr(itr,:) = bmus;
     fprintf (1, '**** GN ITERATION %d, ERROR %f\n\n', itr, err);
 
-    tEnd = toc(tStart);
-    tEnd
-    clear all
+    tElapsed = toc(tStart);
+    tElapsed
 end
 save -v7.3 Jrecon J data y;
