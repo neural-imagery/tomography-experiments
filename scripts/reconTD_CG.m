@@ -13,8 +13,6 @@ mua_bkg = 0.02; % background absorption [1/mm]
 mus_bkg = 0.67; % background scattering [1/mm];
 kap_bkg = 1./(3*(mua_bkg+mus_bkg)); % diffusion coefficient
 
-rad = 40;  % mesh radius [mm]
-
 tau = 1e-3;   % regularisation parameter
 beta = 0.03;  % TV regularisation parameter
 itrmax = 500; % CG iteration limit
