@@ -8,17 +8,12 @@
 % ======================================================================
 % User-defined parameters
 % ======================================================================
-global lprm; % a set of local parameters
-toastdir = getenv('TOASTDIR');
-if length(toastdir) == 0
-    [toastdir,name,ext] = fileparts(which('mtoast2_install.m'));
-end
-addpath(toastdir); 
 
+function reconCW_CG(depth, separation, resol, change, nopt)
 meshpath = './';
 %datapath = './';
-meshname = 'circle32.msh';
-qmname   = 'circle25_32x32.qm';      % QM file
+% meshname = 'circle32.msh';
+% qmname   = 'circle25_32x32.qm';      % QM file
 refind   = 1.4;                      % refractive index
 bx = 64; by = 64;                    % solution basis: grid dimension
 tau = 1;                             % regularisation parameter
@@ -29,6 +24,7 @@ dt = 20;                             % time step in picoseconds
 nstep = 256;                         % number of time steps
 tol = 1e-6;
 maxit = 100;
+rad = 40;
 
 % set the time bins :
 % this example uses who time width divided into non-overalapping bins set
@@ -48,14 +44,48 @@ c0 = 0.3;
 cm = c0/refind;
 
 % Read a TOAST mesh definition from file.
-hMesh = toastMesh ([meshpath meshname]);
+file = 'meshes/circle_two_squares/two_squares_' + string(depth) + '_' + string(separation) + '_' + string(resol) + '.msh';
+hMesh = toastMesh (file,'gmsh');
 lprm.hMesh = hMesh;
-hMesh.ReadQM ([meshpath qmname]);
 n = hMesh.NodeCount();
 dmask = hMesh.DataLinkList ();
 bb = hMesh.BoundingBox();
 bmin = bb(1,:); bmax = bb(2,:);
 vscale = (bmax(1)-bmin(1))/bx * (bmax(2)-bmin(2))/by * cm;
+hMesh.Display
+
+%% Define the source and sensor geometry
+distrib = 'full';
+for i=1:nopt
+
+  switch distrib
+      case 'full'
+          phiq = (i-1)/nopt*2*pi; 
+          phim = (i-0.5)/nopt*2*pi;
+      case 'quarter'
+          phiq = (i-1)/nopt*pi/2+pi/4;
+          phim = (i-0.5)/nopt*pi/2+pi/4;
+  end
+
+  source(i,:) = rad*[cos(phiq), sin(phiq)];
+  sensor(i,:) = rad*[cos(phim), sin(phim)];
+end
+
+hMesh.SetQM(source,sensor);
+qvec = real(hMesh.Qvec('Neumann','Gaussian',2));
+nQ = size(qvec,2);
+lprm.qvec = qvec;
+
+mvec = real(hMesh.Mvec('Gaussian',2,refind));
+lprm.mvec= mvec;
+nM = size(mvec,2);
+
+hold on
+plot(source(:,1),source(:,2),'ro','MarkerFaceColor','r');
+plot(sensor(:,1),sensor(:,2),'bsquare','MarkerFaceColor','b');
+hold off
+legend('','Source', 'Sensor');
+
 
 % Set up homogeneous initial parameter estimates
 mua0 = 0.025;
@@ -81,30 +111,32 @@ solmask = hBasis.Map('S->B',ones(hBasis.slen,1));
 figure; imagesc(reshape(solmask,bx,by)); title('solution mask');
 solmask2 = [solmask solmask+blen];
 
-%% Generate source vectors
-qvec = hMesh.Qvec ('Neumann', 'Gaussian', 2);
-qvec = qvec(:,[1:2:31]); % use every second source
-nQ = size(qvec,2);
-lprm.qvec = qvec;
-
-%% Generate measurement vectors
-mvec = hMesh.Mvec ('Gaussian', 2);
-mvec = mvec(:,[2:2:32]); % use every second detector
-lprm.mvec= mvec;
-nM = size(mvec,2);
-
 %% data
 % synthesise some data
 
 muaim = zeros(bx,by);
 musim = muaim;
-muaim(18:28,14:24) = 2*mua0;
-musim(30:40,40:50) = 2*mus0;
+
+dx = 2*rad/by; dy = 2*rad/by;
+square_width = int32(8/dx); %[units]
+
+square1X_startIdx = int32(1+bx/2 - (separation/2)/dx - square_width/2);
+square2X_startIdx = int32(bx/2 + (separation/2)/dx - square_width/2);
+squareY_startIdx = int32(by-depth/dy-square_width);
+
+muaim(squareY_startIdx:squareY_startIdx+square_width, ...
+    square1X_startIdx:square1X_startIdx+square_width) = change*mua0;
+muaim(squareY_startIdx:squareY_startIdx+square_width, ...
+    square2X_startIdx:square2X_startIdx+square_width) = change*mua0;
+
+musim(squareY_startIdx:squareY_startIdx+square_width, ...
+    square1X_startIdx:square1X_startIdx+square_width) = change*mus0;
+musim(squareY_startIdx:squareY_startIdx+square_width, ...
+    square2X_startIdx:square2X_startIdx+square_width) = change*mus0;
 
 figure(4);clf;
 subplot(1,2,1); imagesc(reshape(hBasis.Map('M->B',mua0*ones(n,1)),bx,by) + muaim);title('\mu_a target');
 subplot(1,2,2); imagesc(reshape(hBasis.Map('M->B',mus0*ones(n,1)),bx,by) + musim);title('\mu_s target');
-
 
 mua1 = mua + hBasis.Map('B->M',muaim);
 mus1 = mus + hBasis.Map('B->M',musim);
@@ -184,7 +216,6 @@ fprintf (1, '\n**** INITIAL ERROR %f\n\n', err);
 % Gauss-Newton loop
 %itrmax = 1;
 while (itr <= itrmax) & (err > GNtol*err0) & (errp-err > GNtol)
-    tStart = tic;
 
     % Construct the Jacobian
     fprintf (1,'Calculating Jacobian\n');
@@ -236,7 +267,7 @@ while (itr <= itrmax) & (err > GNtol*err0) & (errp-err > GNtol)
     errp = err;
     step = 0.02;
 
-    [step, err] = toastLineSearch (x0, dx, step, err, @tobjective);
+    [step, err] = toastLineSearch (x0, dx, step, err, @objective);
     
     % Add update to solution
     x = x0+step*dx;    
@@ -265,9 +296,28 @@ while (itr <= itrmax) & (err > GNtol*err0) & (errp-err > GNtol)
     bmua_itr(itr,:) = bmua;
     bmus_itr(itr,:) = bmus;
     fprintf (1, '**** GN ITERATION %d, ERROR %f\n\n', itr, err);
-
-    tEnd = toc(tStart);
-    tEnd
-    clear all
 end
+
+    function p = objective(x)
+    
+        % global lprm; % a set of local parameters
+        
+        % Map parameters back to mesh
+        smua = x(1:size(x)/2)/lprm.cm;
+        skap = x(size(x)/2+1:size(x))/lprm.cm;
+        smus = 1./(3*skap) - smua;
+        mua = lprm.hBasis.Map('S->M', smua);
+        mus = lprm.hBasis.Map('S->M', smus);
+        for j = 1:length(mua) % ensure positivity
+            mua(j) = max(1e-4,mua(j));
+            mus(j) = max(0.2,mus(j));
+        end
+       
+        [gamma,t] = toastProjectTPSF(lprm.hMesh, mua, mus, lprm.ref, lprm.qvec, lprm.mvec,lprm.dt,lprm.nstep);
+         proj = reshape(WindowTPSF(gamma,lprm.twin)',[],1); % single vector of data, ordered by time gate.
+    
+        [p, p_data, p_prior] = toastObjective (proj, lprm.data, lprm.sd,lprm.hReg, x);
+        fprintf (1, '    [LH: %f, PR: %f]\n', p_data, p_prior);
+    end
 save -v7.3 Jrecon J data y;
+end
