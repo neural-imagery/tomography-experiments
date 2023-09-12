@@ -184,6 +184,7 @@ fprintf (1, '\n**** INITIAL ERROR %f\n\n', err);
 % Gauss-Newton loop
 %itrmax = 1;
 while (itr <= itrmax) & (err > GNtol*err0) & (errp-err > GNtol)
+    tStart = tic;
 
     % Construct the Jacobian
     fprintf (1,'Calculating Jacobian\n');
@@ -264,5 +265,8 @@ while (itr <= itrmax) & (err > GNtol*err0) & (errp-err > GNtol)
     bmua_itr(itr,:) = bmua;
     bmus_itr(itr,:) = bmus;
     fprintf (1, '**** GN ITERATION %d, ERROR %f\n\n', itr, err);
+
+    tEnd = toc(tStart);
+    tEnd
 end
 save -v7.3 Jrecon J data y;
