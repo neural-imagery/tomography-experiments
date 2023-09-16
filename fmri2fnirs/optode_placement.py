@@ -12,14 +12,11 @@ from scipy.linalg import svd
 
 def get_probes(n:int, vertices):
     probes = vertices[np.random.choice(np.arange(len(vertices)), 4*n)]     # randomly over sample vertices
-    print(f"{len(probes)} probes left")
     vertices_z = vertices[:,2]
     vertices_mid = (min(vertices_z) + max(vertices_z))/2                   # mid-point, only put electrodes on top half of brain
     probes_z = probes[:,2]
     probes = probes[np.where(probes_z >= vertices_mid)]                    # throw away bottom half
-    print(f"{len(probes)} probes left")
     probes = probes[:n]
-    print(f"{len(probes)} probes left")
     c = np.mean(vertices,axis=0)                                           # Coordinate of center of mass
     probes = np.array([i*0.99+c*0.01 for i in probes])                     # bring sources a tiny bit into the brain 1%, make sure in tissue
     return probes
@@ -86,12 +83,14 @@ def get_optodes(vol:np.ndarray, nsources: int = 10, ndetectors: int = 100):
     directions = get_normals(sources, vertices)                                 # Find orthogonal directions of sources (pointing into brain)
     return sources,detectors,directions 
 
-def arr3_to_mcx_input(numpy_fname:str, json_boilerplate:str="colin27.json"):
+def save_optodes_json(sources,detectors,directions,vol,vol_name="test.json", json_boilerplate:str="colin27.json"):
     """
     Serializes and saves json input to mcx for isual display on mcx cloud. ++other stuff
     
     Parameters
     ----------
+    sources : list of np.ndarray
+
     numpy_fname : str
         Path to .npy file containing 3d numpy array
     json_boilerplate : str
@@ -105,9 +104,9 @@ def arr3_to_mcx_input(numpy_fname:str, json_boilerplate:str="colin27.json"):
     sources_list : list 
         List of dictionaries containing sources information (postion and direction)
     """
-    # Load numpy file 
-    vol = np.load(numpy_fname)
-    vol_name = numpy_fname[:-4] # name of volume file
+    # # Load numpy file 
+    # vol = np.load(numpy_fname)
+    #vol_name = numpy_fname[:-4] # name of volume file
     
     ### JSON manipulation
     # encode & compress vol
@@ -121,7 +120,7 @@ def arr3_to_mcx_input(numpy_fname:str, json_boilerplate:str="colin27.json"):
     json_inp["Shapes"] = vol_encoded                                           # Replaced volume ("shapes") atribute 
     json_inp["Session"]["ID"] = vol_name                                       # and model ID
     # Make optode placement
-    sources,detectors,directions = get_optodes(vol)
+    # sources,detectors,directions = get_optodes(vol)
     sources_list = []
     for s,d in zip(sources,directions):
         sources_list.append({
@@ -142,9 +141,8 @@ def arr3_to_mcx_input(numpy_fname:str, json_boilerplate:str="colin27.json"):
         "Detector": detectors_list
     }
     json_inp["Domain"]["Dim"] = [int(i) for i in vol.shape]                    # Set the spatial domain of Simulation
-    with open(f"{vol_name}.json","w") as f: 
+    with open(vol_name,"w") as f: 
         json.dump(json_inp, f, indent=4)                                       # Write above changes to file
-    print(f"Wrote json file to {vol_name}.json")
         
     ### Build Config File
     # Get the layer properties [mua,mus,g,n] from default colin27
@@ -166,6 +164,6 @@ def arr3_to_mcx_input(numpy_fname:str, json_boilerplate:str="colin27.json"):
         'issrcfrom0':1, # flag ensure src/det coordinates align with voxel space
         'issaveseed':1 # set this flag to store dtected photon seed data
     }
-    return cfg,json_inp,sources_list
+    return #cfg,json_inp,sources_list
 # The cfg dic will only have one source, the first source from sources_list
 
