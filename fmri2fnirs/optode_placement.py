@@ -72,7 +72,7 @@ def padz_with0layer(vol: np.ndarray):
     """
     Add a layer of zeros at the top so that the surface finds the top of the brain
     """
-    return np.vstack([vol.T, np.zeros([1, 120, 120])]).T
+    return np.vstack([vol.T, np.zeros([1, vol.shape[1], vol.shape[2]])]).T
 
 
 def get_optodes(vol: np.ndarray, nsources: int = 10, ndetectors: int = 100, detrad : float = 3):
