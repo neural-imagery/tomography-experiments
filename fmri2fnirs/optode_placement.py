@@ -55,7 +55,7 @@ def padz_with0layer(vol: np.ndarray):
     return np.vstack([vol.T, np.zeros([1, 120, 120])]).T
 
 
-def get_optodes(vol: np.ndarray, nsources: int = 10, ndetectors: int = 100):
+def get_optodes(vol: np.ndarray, nsources: int = 10, ndetectors: int = 100, detrad : float = 3):
     """
     Get optode locations from brain segmentation
 
@@ -63,6 +63,8 @@ def get_optodes(vol: np.ndarray, nsources: int = 10, ndetectors: int = 100):
     ----------
     vol : np.ndarray
         3d numpy array specifying different layers of the brain
+    detrad : float
+        Radius of detectors
 
     Returns
     -------
@@ -88,6 +90,10 @@ def get_optodes(vol: np.ndarray, nsources: int = 10, ndetectors: int = 100):
 
     # place optodes randomly
     detectors = get_probes(ndetectors, vertices)  # Initiate 100 detectors
+
+    # add radius to detectors
+    detectors = np.hstack([detectors, np.ones([len(detectors), 1]) * detrad])
+
     sources = get_probes(nsources, vertices)  # Initiate 10 probes
     directions = get_normals(
         sources, vertices
@@ -155,7 +161,7 @@ def save_optodes_json(
         )
     detectors_list = []
     for d in detectors:
-        detectors_list.append({"Pos": [d[0], d[1], d[2]], "R": 1})
+        detectors_list.append({"Pos": [d[0], d[1], d[2]], "R": d[3]})
     json_inp["Optode"] = {
         "Source": sources_list[
             0
