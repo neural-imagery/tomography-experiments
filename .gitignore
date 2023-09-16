@@ -1,3 +1,4 @@
 *.asv
+*.pyc
 recon_2obj/results/
 fmri2fnirs/data/
