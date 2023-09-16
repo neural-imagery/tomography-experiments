@@ -1,3 +1,8 @@
 *.asv
 recon_2obj/results/
 fmri2fnirs/data/
+fslinstaller.py
+__pycache__
+.ipynb_checkpoints
+.vscode
+*.json
