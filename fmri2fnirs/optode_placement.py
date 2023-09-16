@@ -5,13 +5,15 @@ import numpy as np
 import json
 import jdata as jd
 
+
+from sklearn.cluster import KMeans
 from scipy import ndimage
 from skimage import measure
 from scipy.spatial import KDTree
 from scipy.linalg import svd
 
 
-def get_probes(n: int, vertices):
+def get_probes_rand(n: int, vertices):
     probes = vertices[
         np.random.choice(np.arange(len(vertices)), 4 * n)
     ]  # randomly over sample vertices
@@ -27,6 +29,24 @@ def get_probes(n: int, vertices):
         [i * 0.99 + c * 0.01 for i in probes]
     )  # bring sources a tiny bit into the brain 1%, make sure in tissue
     return probes
+
+
+def _euclidean_distance(a,b):
+    return np.linalg.norm(a-b)
+
+# uniformly sampled
+def get_probes(n: int, vertices):
+    kmeans = KMeans(n_clusters=n)
+    kmeans.fit(vertices)
+    labels = kmeans.predict(vertices)
+    centroids = kmeans.cluster_centers_
+    central_points = []
+    for i in range(n):
+        cluster = vertices[labels == i]
+        distances = [_euclidean_distance(c, centroids[i]) for c in cluster]
+        central_points.append(cluster[np.argmin(distances)])
+    central_points = np.asarray(central_points)
+    return central_points 
 
 
 def get_normals(sources, vertices):
@@ -81,6 +101,9 @@ def get_optodes(vol: np.ndarray, nsources: int = 10, ndetectors: int = 100, detr
     # make mesh
     vertices, faces, _, _ = measure.marching_cubes(vol, level=0.5)
     vertices = np.asarray(vertices, "float")
+    # only select top-half of the vertices 
+    c = np.mean(vertices,axis=0) # center
+    vertices = vertices[(vertices[:,2] > c[2]) | ((vertices[:,2] - c[2]) > (vertices[:,1] - c[1]))]
 
     # zthresh = (max(vertices[:,2]) + min(vertices[:,2]))/2
     # zmask = vertices[:,2] > zthresh
