@@ -157,7 +157,7 @@ class Subject(object):
         ### JSON manipulation
         # encode & compress vol
         vol_encoded = jd.encode(
-            self.segmentation, {"compression": "zlib", "base64": 1}
+            np.asarray(self.segmentation + 0.5, dtype=np.uint8), {"compression": "zlib", "base64": 1}
         )  # serialize volume
         # manipulate binary str ing format so that it can be turned into json
         vol_encoded["_ArrayZipData_"] = str(vol_encoded["_ArrayZipData_"])[2:-1]
