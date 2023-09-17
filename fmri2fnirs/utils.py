@@ -315,7 +315,13 @@ def plot_bold(anat_seg, bold, slice=42):
 # MCX
 ###############################################################################
 
-def get_detector_data(flux, points_3d, kernel_size=5):
+def get_detector_data(flux, points_3d, detector_radius=5):
+    """
+    flux: 4D numpy array
+    points_3d: 2D numpy array of shape (n, 3)
+    detector_size: int (mm)
+    """
+    kernel_size = int(detector_radius / 1.8)
     kernel = np.ones((kernel_size, kernel_size, kernel_size))
     flux_conv = np.zeros_like(flux)
 
