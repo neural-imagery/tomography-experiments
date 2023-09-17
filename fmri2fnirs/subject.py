@@ -70,10 +70,7 @@ class Subject(object):
         Plot a slice of the segmentation.
         """
         if not slice: slice = self.segmentation.shape[2]//2
-        plt.figure(figsize=(6,6))
-        plt.imshow(self.segmentation[:,:,slice]); plt.colorbar()
-        plt.title('Anatomical segmentation')
-        plt.show()
+        plt.imshow(self.segmentation[:,:,slice]); plt.colorbar(); plt.show()
     
 
     ###########################################################################
@@ -117,7 +114,7 @@ class Subject(object):
         if not hasattr(self, 'geometry'):
             print("Place optodes")
             return
-        fig = plt.figure(figsize=(6,6))
+        fig = plt.figure()
         ax = plt.axes(projection='3d')
         ax.scatter3D(self.geometry.sources[:,0], self.geometry.sources[:,1], 
                      self.geometry.sources[:,2], c='r', label='sources')
@@ -227,37 +224,37 @@ class Subject(object):
         Bring the segmentation and optodes into the run's functional space.
         """
 
-        path = f"data/sub{self.id}/func/fmri/sess{self.id}/run{runID}/"
+        resolution = "1pt0"
+        anat_path = f"data/sub{self.id}/anat/"
+        func_path = f"data/sub{self.id}/func/fmri/sess{sessionID}/run{runID}/"
+        T1_file   = f"T1_{resolution}_masked"
         fmri_file = f"sub-{self.id}_ses-nsd{sessionID}_task-nsdcore_run-{runID}_bold"
-        seg_ext = "_head_seg"
+        seg_file = "head_seg"
         ext = ".nii.gz"
 
-        if os.path.isfile(path+fmri_file+seg_ext+".npy"): seg = np.load(path+fmri_file+seg_ext+".npy")
+        if os.path.isfile(func_path+seg_file+".npy"): seg = np.load(func_path+seg_file+".npy")
         else: 
 
             # create directory
-            if not os.path.exists(path): os.makedirs(path)    
-
-            # get head segmentation in anatomical space
-            _, anat_seg_file = get_anat_segmentation(subjectID, resolution, plot=False)
+            if not os.path.exists(func_path): os.makedirs(func_path)    
 
             # get functional NSD data
-            url = f"https://natural-scenes-dataset.s3.amazonaws.com/nsddata_rawdata/sub-{subjectID}/ses-nsd{sessionID}/func/"
-            download_nsd_file(url, path, fmri_file)
+            url = f"https://natural-scenes-dataset.s3.amazonaws.com/nsddata_rawdata/sub-{self.id}/ses-nsd{sessionID}/func/"
+            utils.download_nsd_file(url, func_path, fmri_file)
 
-            # TODO: Update anat_seg_file
             # register anatomical segmention in functional space using FSLs `flirt`
-            # anat_seg_file = f"data/sub{subjectID}/anat/T1_{resolution}_masked_head_seg.nii.gz"
-            os.system(f"flirt -in {anat_seg_file} -ref {path}{fmri_file}{ext} -out {path}{fmri_file}{seg_ext}{ext}")
+            # anat_seg_file = f"data/sub{self.id}/anat/T1_{resolution}_masked_head_seg.nii.gz"
+            # os.system(f"flirt -in {anat_seg_file} -ref {func_path}{fmri_file}{ext} -out {func_path}{seg_file}{ext}")
+
+            # get transform matrix
+            os.system(f"flirt -in {anat_path}{T1_file}{ext} -ref {func_path}{fmri_file}{ext} -omat {func_path}anat2func.mat")
+
+            # apply transform to segmentation
+            os.system(f"flirt -in {anat_path}{T1_file}_{seg_file}{ext} -ref {func_path}{fmri_file}{ext} -applyxfm -init {func_path}anat2func.mat -out {func_path}{seg_file}{ext}")
 
             # load and save functional segmentation
-            seg = np.round(nib.load(path+fmri_file+seg_ext+ext).get_fdata()).astype('uint8')
-            np.save(path+fmri_file+seg_ext+".npy", seg)
-
-        # plot segmentation   
-        if plot:
-            plt.imshow(seg[:,:,seg.shape[2]//2]); plt.colorbar()
-            plt.title('Segmentation in functional space')
+            seg = np.round(nib.load(func_path+seg_file+ext).get_fdata()).astype('uint8')
+            np.save(func_path+seg_file+".npy", seg)
             
         return seg
 
