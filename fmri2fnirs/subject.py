@@ -173,6 +173,7 @@ class Subject(object):
         seg_file = "head_seg"
         ext = ".nii.gz"
 
+        # transform segmentation
         if os.path.isfile(func_path+seg_file+".npy"): seg = np.load(func_path+seg_file+".npy")
         else: 
 
@@ -198,48 +199,19 @@ class Subject(object):
             np.save(func_path+seg_file+".npy", seg)
         
 
-        # anat_affine = nib.load(self.path+T1_file+ext).affine
-        # func_affine = nib.load(func_path+fmri_file+ext).affine
-        # anat2func = np.linalg.inv(func_affine).dot(anat_affine)
-
-        def transform_geometry(sources, detectors, mat):
-    
-            def transform_vertices(v):
-                v = np.hstack([v, np.ones((v.shape[0], 1))])
-                return (mat@v.T).T[:,:3]
-
-            # transform sources
-            sources = transform_vertices(sources)
-            # sources[:,0] = sources[:,0] / x_scale
-            # sources[:,1] = sources[:,1] / y_scale
-            # sources[:,2] = sources[:,2] / z_scale
-
-            # transform detectors
-            gt = transform_vertices(detectors[:,:3])
-            detectors = np.hstack([gt, detectors[:,3:]])
-            # detectors[:,0] = detectors[:,0] / x_scale
-            # detectors[:,1] = detectors[:,1] / y_scale
-            # detectors[:,2] = detectors[:,2] / z_scale
-
-            return sources, detectors
-
-        sources, detectors = transform_geometry(self.geometry.sources, self.geometry.detectors, anat2func)
-        geometry = Geometry(sources, detectors, self.geometry.directions)
-        # subj.display_setup(seg_transformed, g)
-
-        # rotation = anat2func[:3,:3]
-        # translation = anat2func[:3,3]
-        # sources = affine_transform(self.geometry.sources, rotation, translation, 
-        #                  nib.load(func_path+fmri_file+ext).get_fdata().shape, 
-        #                  order=1)
-        # detectors = affine_transform(self.geometry.detectors[:,:3], rotation, translation, 
-        #                  nib.load(func_path+fmri_file+ext).get_fdata().shape, 
-        #                  order=1)
-        # detectors = np.hstack([detectors, detectors[:,3:]])
-
-        # geometry = Geometry(sources, detectors, self.geometry.directions)
-
-        # geometry = utils.transform_geometry(self, seg)
+        # transform geometry with scaling from 1mm to 1.8mm
+        def transform_points(M,v, scaling=1/1.8):
+            v = np.hstack([v, np.ones((v.shape[0], 1))])
+            return (M@v.T).T[:,:3] * scaling
+        
+        anat2func = np.loadtxt(func_path+"anat2func.mat")
+        sources   = transform_points(anat2func, self.geometry.sources)
+        detectors = transform_points(anat2func, self.geometry.detectors[:,:3])
+        detectors = np.hstack([detectors, self.geometry.detectors[:,3:]])
+        directions = (anat2func[:3,:3]@self.geometry.directions.T).T
+        directions = directions / np.linalg.norm(directions, axis=1, keepdims=True)
+        
+        geometry = Geometry(sources, detectors, directions)
         # utils.save_optodes_json(seg, geometry)
             
         return seg, geometry
