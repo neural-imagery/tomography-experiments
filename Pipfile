@@ -14,6 +14,7 @@ nibabel = "*"
 jupyter = "*"
 plotly = "*"
 scikit-learn = "*"
+nbdime = "*"
 
 [dev-packages]
 
