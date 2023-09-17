@@ -7,6 +7,7 @@ import utils
 from skimage import measure
 import json
 import jdata as jd
+import plotly.graph_objects as go
 
 
 class Subject(object):
@@ -65,19 +66,12 @@ class Subject(object):
 
         return seg_data
     
-    def plot_segmentation(self, slice=None):
-        """
-        Plot a slice of the segmentation.
-        """
-        if not slice: slice = self.segmentation.shape[2]//2
-        plt.imshow(self.segmentation[:,:,slice]); plt.colorbar(); plt.show()
-    
 
     ###########################################################################
     # Optodes
     ###########################################################################
 
-    def get_optodes(self, nsources: int = 10, ndetectors: int = 100, 
+    def place_optodes(self, nsources: int = 10, ndetectors: int = 100, 
                         detrad : float = 3):
         """
         Get optode locations from brain segmentation
@@ -108,113 +102,56 @@ class Subject(object):
         )  # Find orthogonal directions of sources (pointing into brain)
         
         self.geometry = Geometry(sources, detectors, directions)
-        return self.geometry
-
-    def plot_optodes(self):
-        
-        if not hasattr(self, 'geometry'):
-            print("Place optodes")
-            return
-        fig = plt.figure()
-        ax = plt.axes(projection='3d')
-        ax.scatter3D(self.geometry.sources[:,0], self.geometry.sources[:,1], 
-                     self.geometry.sources[:,2], c='r', label='sources')
-        ax.scatter3D(self.geometry.detectors[:,0], self.geometry.detectors[:,1], 
-                     self.geometry.detectors[:,2], c='b', label='detectors')
-        ax.set_xlabel('x'); ax.set_ylabel('y'); ax.set_zlabel('z')
-        ax.legend(); plt.show()
-
-    def save_optodes_json(
-            self,
-            vol_name="test.json",
-            json_boilerplate: str = "colin27.json"):
-        """
-        Serializes and saves json input to mcx for isual display on mcx cloud. ++other stuff
-
-        Parameters
-        ----------
-        sources : list of np.ndarray
-
-        numpy_fname : str
-            Path to .npy file containing 3d numpy array
-        json_boilerplate : str
-            Path to json boilerplate file.
-        Returns
-        -------
-        cfg : dict
-            Config dictionary to feed to python
-        json_inp : dict
-            JSON dictionary, input to mcx simulations
-        sources_list : list
-            List of dictionaries containing sources information (postion and direction)
-        """
-        # # Load numpy file
-        # vol = np.load(numpy_fname)
-        # vol_name = numpy_fname[:-4] # name of volume file
-
-        ### JSON manipulation
-        # encode & compress vol
-        vol_encoded = jd.encode(
-            np.asarray(self.segmentation + 0.5, dtype=np.uint8), {"compression": "zlib", "base64": 1}
-        )  # serialize volume
-        # manipulate binary str ing format so that it can be turned into json
-        vol_encoded["_ArrayZipData_"] = str(vol_encoded["_ArrayZipData_"])[2:-1]
-
-        with open(json_boilerplate) as f:
-            json_inp = json.load(f)  # Load boilerplate json to dict
-        json_inp["Shapes"] = vol_encoded  # Replaced volume ("shapes") atribute
-        json_inp["Session"]["ID"] = vol_name  # and model ID
-        # Make optode placement
-        sources_list = []
-        for s, d in zip(self.geometry.sources, self.geometry.directions):
-            sources_list.append(
-                {
-                    "Type": "pencil",
-                    "Pos": [s[0], s[1], s[2]],
-                    "Dir": [d[0], d[1], d[2], 0],
-                    "Param1": [0, 0, 0, 0],  # cargo cult, dont know what param1 and 2 does
-                    "Param2": [0, 0, 0, 0],
-                }
-            )
-        detectors_list = []
-        for d in self.geometry.detectors:
-            detectors_list.append({"Pos": [d[0], d[1], d[2]], "R": d[3]})
-        json_inp["Optode"] = {
-            "Source": sources_list[
-                0
-            ],  # For the json we just pick one source, just for mcx viz
-            "Detector": detectors_list,
-        }
-        json_inp["Domain"]["Dim"] = [
-            int(i) for i in self.segmentation.shape
-        ]  # Set the spatial domain of Simulation
-        with open(vol_name, "w") as f:
-            json.dump(json_inp, f, indent=4)  # Write above changes to file
-        print(f"Saved to {vol_name}")
-
-        # ### Build Config File
-        # # Get the layer properties [mua,mus,g,n] from default colin27
-        # prop = [list(i.values()) for i in json_inp["Domain"]["Media"]]
-        # # position detectors in a way python bindings like
-        # detpos = [i["Pos"] + [i["R"]] for i in detectors_list]
-        # 
-        #### Build cfg dict
-        # cfg = {
-        #     "nphoton": int(1e7),
-        #     "vol": self.segmentation,
-        #     "tstart": 0,
-        #     "tend": 5e-9,
-        #     "tstep": 5e-9,
-        #     "srcpos": sources_list[0]["Pos"],
-        #     "srcdir": sources_list[0]["Dir"],
-        #     "prop": prop,
-        #     "detpos": detpos,  # to detect photons, [x,y,z,radius]
-        #     "issavedet": 1,  # not sure how important the rest below this line is
-        #     "issrcfrom0": 1,  # flag ensure src/det coordinates align with voxel space
-        #     "issaveseed": 1,  # set this flag to store dtected photon seed data
-        # }
-        return  # cfg,json_inp,sources_list
     
+    ###########################################################################
+    # Visualization
+    ###########################################################################
+
+    def display_setup(self, seg=None, sources=None, detectors=None):
+        
+        if seg is None: seg = self.segmentation
+        if sources is None: sources = self.geometry.sources
+        if detectors is None: detectors = self.geometry.detectors
+
+        nx, ny, nz = seg.shape
+        def get_lims_colors(surfacecolor):
+            return np.min(surfacecolor), np.max(surfacecolor)
+        def get_the_slice(x, y, z, surfacecolor):
+            return go.Surface(x=x, y=y, z=z, surfacecolor=surfacecolor, coloraxis='coloraxis')
+        def colorax(vmin, vmax):
+            return dict(cmin=vmin, cmax=vmax)
+        
+        # plot z slice
+        x = np.arange(nx); y = np.arange(ny); x, y = np.meshgrid(x,y)
+        z_idx = nz//2; z = z_idx * np.ones(x.shape)
+        surfcolor_z = seg[:, :, z_idx].T
+        sminz, smaxz = get_lims_colors(surfcolor_z)
+        slice_z = get_the_slice(x, y, z, surfcolor_z)
+        
+        # plot y slice
+        x = np.arange(nx); z = np.arange(nz); x, z = np.meshgrid(x,z)
+        y_idx = ny//3; y = y_idx * np.ones(x.shape)
+        surfcolor_y = seg[:, y_idx, :].T
+        sminy, smaxy = get_lims_colors(surfcolor_y)
+        vmin = min([sminz, sminy])
+        vmax = max([smaxz, smaxy])
+        slice_y = get_the_slice(x, y, z, surfcolor_y)
+
+        # plot points
+        scatter_sources = go.Scatter3d(name='sources', x=sources[:,0], 
+                                       y=sources[:,1], z=sources[:,2], 
+                                       mode='markers', marker=dict(size=3, color='red'))
+        scatter_detectors = go.Scatter3d(name='detectors', x=detectors[:,0], 
+                                         y=detectors[:,1], z=detectors[:,2], 
+                                         mode='markers', marker=dict(size=3, color='blue'))
+
+        fig1 = go.Figure(data=[slice_z, slice_y, scatter_sources, scatter_detectors])
+        fig1.update_layout(
+                width=700, height=700,
+                scene_xaxis_range=[0, nx], scene_yaxis_range=[0, ny], scene_zaxis_range=[0, nz], 
+                coloraxis=dict(colorscale='deep', colorbar_thickness=25, colorbar_len=0.75,
+                                **colorax(vmin, vmax)))
+        fig1.show()
     
     ###########################################################################
     # Transform
