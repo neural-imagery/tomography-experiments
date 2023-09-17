@@ -108,6 +108,7 @@ class Subject(object):
         )  # Find orthogonal directions of sources (pointing into brain)
         
         self.geometry = Geometry(sources, detectors, directions)
+        return self.geometry
 
     def plot_optodes(self):
         
