@@ -95,14 +95,12 @@ class Subject(object):
         vertices = vertices[(vertices[:,2] > c[2]) | ((vertices[:,2] - c[2]) > (vertices[:,1] - c[1]))]
 
         # place optodes uniformly
-        detectors = utils.get_probes(ndetectors, vertices)  # Initiate 100 detectors
+        detectors = utils.get_probes(ndetectors, vertices) 
 
         # add radius to detectors
         detectors = np.hstack([detectors, np.ones([len(detectors), 1]) * detrad])
-        sources = utils.get_probes(nsources, vertices)  # Initiate 10 probes
-        directions = utils.get_normals(
-            sources, vertices
-        )  # Find orthogonal directions of sources (pointing into brain)
+        sources = utils.get_probes(nsources, vertices) 
+        directions = utils.get_normals(sources, vertices)  # Find orthogonal directions of sources (pointing into brain)
         
         self.geometry = Geometry(sources, detectors, directions)
     
