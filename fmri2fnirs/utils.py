@@ -12,6 +12,8 @@ from geometry import Geometry
 import jdata as jd
 import json
 
+import matplotlib.pyplot as plt
+
 ###############################################################################
 # Segmentation
 ###############################################################################
@@ -259,3 +261,80 @@ def transform_geometry(subj, seg_transformed):
     geometry = Geometry(srcpos_func, detpos_func, srcdir_func)
 
     return geometry
+
+def plot_bold(anat_seg, bold, slice=42):
+    """
+    anat_seg: segmented T1 image (nx, ny, nz) in a numpy array
+    bold: bold percent change (nx, ny, nz) in a numpy array, e.g. 1 = no change
+    slice: index of the slice along the z-axis
+    """
+    
+    # Validate input dimensions
+    if anat_seg.shape != bold.shape:
+        raise ValueError("The shapes of anat_seg and bold must be the same")
+    
+    if slice < 0 or slice >= anat_seg.shape[2]:
+        raise ValueError("Invalid slice index")
+    
+    # Extract the slice from the 3D images
+    anat_slice = anat_seg[:,:,slice]
+    bold_slice = bold[:,:,slice]
+
+    # mask pixels where there's no brain
+    bold_slice = np.ma.masked_where(anat_slice < 2, bold_slice)
+    
+    # Mask for pixels where there's a significant change in the BOLD signal
+    mask = np.abs(bold_slice - 1) > 0.02
+
+    # clip the BOLD percent change to +/- 20%
+    bold_slice = np.clip(bold_slice, 0.8, 1.2)
+
+    
+    # Create the plot
+    fig, ax = plt.subplots()
+    
+    # Show the anatomical slice
+    ax.imshow(anat_slice, cmap='gray', origin='lower')
+    
+    # Overlay the BOLD percent change where it differs from 1
+    im = ax.imshow(np.ma.masked_where(~mask, bold_slice-1), alpha=0.5, origin='lower', cmap='seismic')
+    
+    ax.set_title(f"BOLD Change Overlay on Slice {slice}")
+    
+    # Add a colorbar for the BOLD data
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label('BOLD Percent Change')
+    
+    plt.show()
+
+
+
+def bold2optical(bold_change, seg_transformed, media_properties):
+    
+    # 1. build baseline optical properties
+    # optical_baseline should be of shape (2, x,y,z)
+    newshape = (2, *seg_transformed.shape)
+    optical_baseline = np.zeros(newshape)
+    for idx, prop in enumerate(media_properties):
+        # when seg_transformed == idx, optical_baseline[0] == prop[0], optical_baseline[1] == prop[1]
+        optical_baseline[0][seg_transformed == idx] = prop[0] # mu_a
+        optical_baseline[1][seg_transformed == idx] = prop[1] # mu_s
+    
+
+    # 2. build optical properties change
+    optical_change = (bold_change - 1) * 0.20 + 1 # scientific scaling factor BOLD -> optical
+    
+    optical_vol = optical_baseline[..., np.newaxis]  # Adds a new axis along the last dimension
+
+    # Now fill in the new dimension
+    optical_vol = np.repeat(optical_vol, bold_change.shape[-1], axis=-1)
+
+    # print(optical_change.shape, seg_transformed.shape)
+    for i in range(optical_vol.shape[-1]):
+        optical_vol[0,:,:,:,i] *= optical_change[:,:,:,i] * (seg_transformed > 2) # white and grey matter
+    
+    # put back the removed properties 
+    for i in [0,1,2]:
+        optical_vol[0,:,:,:][seg_transformed == i] = media_properties[i][0]
+
+    return optical_vol.astype(np.float32), optical_baseline.astype(np.float32)
