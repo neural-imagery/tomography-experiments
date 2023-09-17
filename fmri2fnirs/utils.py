@@ -12,6 +12,8 @@ from geometry import Geometry
 import jdata as jd
 import json
 
+from scipy.ndimage import affine_transform
+
 ###############################################################################
 # Segmentation
 ###############################################################################
@@ -259,3 +261,58 @@ def transform_geometry(subj, seg_transformed):
     geometry = Geometry(srcpos_func, detpos_func, srcdir_func)
 
     return geometry
+
+
+
+
+
+
+def transform_anat_to_func(anat_path, func_path, output_path):
+    """
+    Transforms 3D voxels from anatomical space to functional space.
+    
+    Parameters:
+        anat_path (str): File path to the anatomical MRI image.
+        func_path (str): File path to the functional MRI image.
+        output_path (str): File path to save the transformed anatomical MRI image.
+        
+    Returns:
+        None
+    """
+    
+    # Load anatomical and functional MRI data
+    anat_img = nib.load(anat_path)
+    func_img = nib.load(func_path)
+
+    # Get data and affine transformation matrices
+    anat_data = anat_img.get_fdata()
+    func_data = func_img.get_fdata()
+
+    anat_affine = anat_img.affine
+    func_affine = func_img.affine
+    print(anat_affine.shape)
+    print(func_affine.shape)
+
+    # Compute the transformation matrix from anatomical to functional space
+    anat_to_func_affine = np.linalg.inv(func_affine).dot(anat_affine)
+
+    # Extract rotation and translation components
+    rotation = anat_to_func_affine[:3, :3]
+    translation = anat_to_func_affine[:3, 3]
+
+    print(anat_to_func_affine.shape, rotation.shape, translation.shape)
+    print(anat_data.shape)
+    print(func_data.shape)
+
+    # Apply affine transformation to map anatomical data into the functional space
+    transformed_anat_data = affine_transform(
+        anat_data, 
+        rotation, 
+        translation, 
+        func_data[0].shape, 
+        order=1  # Linear interpolation
+    )
+
+    # Save the transformed anatomical data to a new NIFTI file
+    transformed_anat_img = nib.Nifti1Image(transformed_anat_data, func_affine)
+    nib.save(transformed_anat_img, output_path)

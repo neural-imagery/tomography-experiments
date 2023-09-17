@@ -6,9 +6,9 @@ class Geometry(object):
     """
 
     def __init__(self, sources, detectors, directions):
-        self.sources    = sources
-        self.detectors  = detectors
-        self.directions = directions
+        self.srcpos    = sources
+        self.detpos  = detectors
+        self.srcdirs = directions
         self.nsources   = sources.shape[0]
         self.ndetectors = detectors.shape[0]
 

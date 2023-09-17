@@ -9,7 +9,6 @@ import json
 import jdata as jd
 import plotly.graph_objects as go
 
-
 class Subject(object):
     """
     This class defines a NSD subject.
@@ -75,7 +74,7 @@ class Subject(object):
     def place_optodes(self, nsources: int = 10, ndetectors: int = 100, 
                         detrad : float = 3):
         """
-        Get optode locations from brain segmentation
+        Get optode locations from brain segmentation. Place them uniformly.
         """
         
         if hasattr(self, 'geometry'):
@@ -140,11 +139,11 @@ class Subject(object):
         slice_y = get_the_slice(x, y, z, surfcolor_y)
 
         # plot points
-        scatter_sources = go.Scatter3d(name='sources', x=geom.sources[:,0], 
-                                       y=geom.sources[:,1], z=geom.sources[:,2], 
+        scatter_sources = go.Scatter3d(name='sources', x=geom.srcpos[:,0], 
+                                       y=geom.srcpos[:,1], z=geom.srcpos[:,2], 
                                        mode='markers', marker=dict(size=3, color='red'))
-        scatter_detectors = go.Scatter3d(name='detectors', x=geom.detectors[:,0], 
-                                         y=geom.detectors[:,1], z=geom.detectors[:,2], 
+        scatter_detectors = go.Scatter3d(name='detectors', x=geom.detpos[:,0], 
+                                         y=geom.detpos[:,1], z=geom.detpos[:,2], 
                                          mode='markers', marker=dict(size=3, color='blue'))
 
         fig1 = go.Figure(data=[slice_z, slice_y, scatter_sources, scatter_detectors])
@@ -164,42 +163,18 @@ class Subject(object):
         """
         Bring the segmentation and optodes into the run's functional space.
         """
-
-        resolution = "1pt0"
+        # directory where all functional data is
         func_path = f"data/sub{self.id}/func/fmri/sess{sessionID}/run{runID}/"
-        T1_file   = f"T1_{resolution}_masked"
-        fmri_file = f"sub-{self.id}_ses-nsd{sessionID}_task-nsdcore_run-{runID}_bold"
-        seg_file = "head_seg"
-        ext = ".nii.gz"
 
-        if os.path.isfile(func_path+seg_file+".npy"): seg = np.load(func_path+seg_file+".npy")
-        else: 
+        # anatomical file location
+        anat_file   = f"{self.path}T1_1pt0_masked.nii.gz"
 
-            # create directory
-            if not os.path.exists(func_path): os.makedirs(func_path)    
+        # functional file location for this run
+        func_file = f"{func_path}sub-{self.id}_ses-nsd{sessionID}_task-nsdcore_run-{runID}_bold.nii.gz"
 
-            # get functional NSD data
-            url = f"https://natural-scenes-dataset.s3.amazonaws.com/nsddata_rawdata/sub-{self.id}/ses-nsd{sessionID}/func/"
-            utils.download_nsd_file(url, func_path, fmri_file)
+        # transform 
+        utils.transform_anat_to_func(anat_file, func_file, 'transformed_anatomical.nii.gz')
 
-            # register anatomical segmention in functional space using FSLs `flirt`
-            # anat_seg_file = f"data/sub{self.id}/anat/T1_{resolution}_masked_head_seg.nii.gz"
-            # os.system(f"flirt -in {anat_seg_file} -ref {func_path}{fmri_file}{ext} -out {func_path}{seg_file}{ext}")
-
-            # get transform matrix
-            os.system(f"flirt -in {self.path}{T1_file}{ext} -ref {func_path}{fmri_file}{ext} -omat {func_path}anat2func.mat")
-
-            # apply transform to segmentation
-            os.system(f"flirt -in {self.path}{T1_file}_{seg_file}{ext} -ref {func_path}{fmri_file}{ext} -applyxfm -init {func_path}anat2func.mat -out {func_path}{seg_file}{ext}")
-
-            # load and save functional segmentation
-            seg = np.round(nib.load(func_path+seg_file+ext).get_fdata()).astype('uint8')
-            np.save(func_path+seg_file+".npy", seg)
-        
-        geometry = utils.transform_geometry(self, seg)
-        utils.save_optodes_json(seg, geometry)
-            
-        return seg, geometry
 
         
         
