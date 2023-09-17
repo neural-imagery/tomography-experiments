@@ -212,7 +212,7 @@ class Subject(object):
         directions = directions / np.linalg.norm(directions, axis=1, keepdims=True)
         
         geometry = Geometry(sources, detectors, directions)
-        # utils.save_optodes_json(seg, geometry)
+        utils.save_optodes_json(seg, geometry)
             
         return seg, geometry
 
