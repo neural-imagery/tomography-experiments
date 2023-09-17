@@ -12,6 +12,9 @@ from geometry import Geometry
 import jdata as jd
 import json
 
+from scipy.ndimage import convolve
+
+
 ###############################################################################
 # Segmentation
 ###############################################################################
@@ -259,3 +262,23 @@ def transform_geometry(subj, seg_transformed):
     geometry = Geometry(srcpos_func, detpos_func, srcdir_func)
 
     return geometry
+
+
+###############################################################################
+# MCX
+###############################################################################
+
+def get_detector_data(flux, points_3d, kernel_size=5):
+    kernel = np.ones((kernel_size, kernel_size, kernel_size))
+    flux_conv = np.zeros_like(flux)
+
+    # Convolve each time slice with the 3D kernel
+    for t in range(flux.shape[-1]):
+        flux_conv[:, :, :, t] = convolve(flux[:, :, :, t], kernel, mode='constant', cval=0.0)
+        
+    # Extract the time components at the specified 3D points
+    x_indices = points_3d[:, 0].astype(int)
+    y_indices = points_3d[:, 1].astype(int)
+    z_indices = points_3d[:, 2].astype(int)
+
+    return flux_conv[x_indices, y_indices, z_indices, :]
