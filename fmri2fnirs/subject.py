@@ -8,6 +8,7 @@ from skimage import measure
 import json
 import jdata as jd
 import plotly.graph_objects as go
+from scipy.ndimage import affine_transform
 
 
 class Subject(object):
@@ -159,7 +160,7 @@ class Subject(object):
     ###########################################################################
     # Transform
     ###########################################################################
-
+    
     def transform(self, sessionID, runID):
         """
         Bring the segmentation and optodes into the run's functional space.
@@ -196,8 +197,50 @@ class Subject(object):
             seg = np.round(nib.load(func_path+seg_file+ext).get_fdata()).astype('uint8')
             np.save(func_path+seg_file+".npy", seg)
         
-        geometry = utils.transform_geometry(self, seg)
-        utils.save_optodes_json(seg, geometry)
+
+        # anat_affine = nib.load(self.path+T1_file+ext).affine
+        # func_affine = nib.load(func_path+fmri_file+ext).affine
+        # anat2func = np.linalg.inv(func_affine).dot(anat_affine)
+
+        def transform_geometry(sources, detectors, mat):
+    
+            def transform_vertices(v):
+                v = np.hstack([v, np.ones((v.shape[0], 1))])
+                return (mat@v.T).T[:,:3]
+
+            # transform sources
+            sources = transform_vertices(sources)
+            # sources[:,0] = sources[:,0] / x_scale
+            # sources[:,1] = sources[:,1] / y_scale
+            # sources[:,2] = sources[:,2] / z_scale
+
+            # transform detectors
+            gt = transform_vertices(detectors[:,:3])
+            detectors = np.hstack([gt, detectors[:,3:]])
+            # detectors[:,0] = detectors[:,0] / x_scale
+            # detectors[:,1] = detectors[:,1] / y_scale
+            # detectors[:,2] = detectors[:,2] / z_scale
+
+            return sources, detectors
+
+        sources, detectors = transform_geometry(self.geometry.sources, self.geometry.detectors, anat2func)
+        geometry = Geometry(sources, detectors, self.geometry.directions)
+        # subj.display_setup(seg_transformed, g)
+
+        # rotation = anat2func[:3,:3]
+        # translation = anat2func[:3,3]
+        # sources = affine_transform(self.geometry.sources, rotation, translation, 
+        #                  nib.load(func_path+fmri_file+ext).get_fdata().shape, 
+        #                  order=1)
+        # detectors = affine_transform(self.geometry.detectors[:,:3], rotation, translation, 
+        #                  nib.load(func_path+fmri_file+ext).get_fdata().shape, 
+        #                  order=1)
+        # detectors = np.hstack([detectors, detectors[:,3:]])
+
+        # geometry = Geometry(sources, detectors, self.geometry.directions)
+
+        # geometry = utils.transform_geometry(self, seg)
+        # utils.save_optodes_json(seg, geometry)
             
         return seg, geometry
 
