@@ -9,6 +9,9 @@ from scipy.linalg import svd
 from skimage import measure
 from geometry import Geometry
 
+import jdata as jd
+import json
+
 ###############################################################################
 # Segmentation
 ###############################################################################
@@ -126,10 +129,7 @@ def padz_with0layer(vol: np.ndarray):
     """
     return np.vstack([vol.T, np.zeros([1, vol.shape[1], vol.shape[2]])]).T
 
-def save_optodes_json(
-        self,
-        vol_name="test.json",
-        json_boilerplate: str = "colin27.json"):
+def save_optodes_json(segmentation, geometry, vol_name="test.json", json_boilerplate: str = "colin27.json"):
     """
     Serializes and saves json input to mcx for isual display on mcx cloud. ++other stuff
 
@@ -157,7 +157,7 @@ def save_optodes_json(
     ### JSON manipulation
     # encode & compress vol
     vol_encoded = jd.encode(
-        np.asarray(self.segmentation + 0.5, dtype=np.uint8), {"compression": "zlib", "base64": 1}
+        np.asarray(segmentation + 0.5, dtype=np.uint8), {"compression": "zlib", "base64": 1}
     )  # serialize volume
     # manipulate binary str ing format so that it can be turned into json
     vol_encoded["_ArrayZipData_"] = str(vol_encoded["_ArrayZipData_"])[2:-1]
@@ -168,7 +168,7 @@ def save_optodes_json(
     json_inp["Session"]["ID"] = vol_name  # and model ID
     # Make optode placement
     sources_list = []
-    for s, d in zip(self.geometry.sources, self.geometry.directions):
+    for s, d in zip(geometry.sources, geometry.directions):
         sources_list.append(
             {
                 "Type": "pencil",
@@ -179,7 +179,7 @@ def save_optodes_json(
             }
         )
     detectors_list = []
-    for d in self.geometry.detectors:
+    for d in geometry.detectors:
         detectors_list.append({"Pos": [d[0], d[1], d[2]], "R": d[3]})
     json_inp["Optode"] = {
         "Source": sources_list[
@@ -188,7 +188,7 @@ def save_optodes_json(
         "Detector": detectors_list,
     }
     json_inp["Domain"]["Dim"] = [
-        int(i) for i in self.segmentation.shape
+        int(i) for i in segmentation.shape
     ]  # Set the spatial domain of Simulation
     with open(vol_name, "w") as f:
         json.dump(json_inp, f, indent=4)  # Write above changes to file

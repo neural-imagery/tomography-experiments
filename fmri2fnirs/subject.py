@@ -197,6 +197,7 @@ class Subject(object):
             np.save(func_path+seg_file+".npy", seg)
         
         geometry = utils.transform_geometry(self, seg)
+        utils.save_optodes_json(seg, geometry)
             
         return seg, geometry
 
