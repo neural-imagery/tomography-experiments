@@ -15,6 +15,8 @@ import json
 import matplotlib.pyplot as plt
 from scipy.ndimage import convolve
 
+import matplotlib.animation as animation
+
 
 ###############################################################################
 # Segmentation
@@ -309,9 +311,51 @@ def plot_bold(anat_seg, bold, slice=42):
     
     plt.show()
 
+###############################################################################
+# MCX
+###############################################################################
+
+def get_detector_data(flux, points_3d, kernel_size=5):
+    kernel = np.ones((kernel_size, kernel_size, kernel_size))
+    flux_conv = np.zeros_like(flux)
+
+    # Convolve each time slice with the 3D kernel
+    for t in range(flux.shape[-1]):
+        flux_conv[:, :, :, t] = convolve(flux[:, :, :, t], kernel, mode='constant', cval=0.0)
+        
+    # Extract the time components at the specified 3D points
+    x_indices = points_3d[:, 0].astype(int)
+    y_indices = points_3d[:, 1].astype(int)
+    z_indices = points_3d[:, 2].astype(int)
+
+    return flux_conv[x_indices, y_indices, z_indices, :]
+
+def animate_flux(res, seg_transformed):
+    # Set up the figure
+    zidx = seg_transformed.shape[2] // 2
+    fig, ax = plt.subplots(figsize=(10, 10))
+
+    # Initial frame
+    im1 = ax.imshow(seg_transformed[:,:,zidx], animated=True, cmap='gray')
+    im2 = ax.imshow(np.log10(res['flux'][:,:,zidx, 0]), animated=True, alpha=0.5, cmap='jet')
+
+    # Update function
+    def update(t):
+        im2.set_array(np.log10(res['flux'][:,:,zidx, t]))
+        return im2,
+
+    # Create the animation object
+    ani = animation.FuncAnimation(fig, update, frames=res['flux'].shape[3], blit=True)
+
+    # Save the animation
+    ani.save('visualization.mp4', writer='ffmpeg', fps=5)
+
+    plt.close(fig)
 
 
-def bold2optical(bold_change, seg_transformed, media_properties):
+# fMRI
+
+def _boldpercent2optical(bold_change, seg_transformed, media_properties):
     
     # 1. build baseline optical properties
     # optical_baseline should be of shape (2, x,y,z)
@@ -341,21 +385,17 @@ def bold2optical(bold_change, seg_transformed, media_properties):
 
     return optical_vol.astype(np.float32), optical_baseline.astype(np.float32)
 
-###############################################################################
-# MCX
-###############################################################################
 
-def get_detector_data(flux, points_3d, kernel_size=5):
-    kernel = np.ones((kernel_size, kernel_size, kernel_size))
-    flux_conv = np.zeros_like(flux)
+def fmri2optical(fmri, seg_transformed, media_properties):
+    """
+    fmri: 4D numpy array
+    anat_seg: 3D numpy array
+    media_properties: list of lists, each list contains [mu_a, mu_s, g, n]
+    """
+    fmri_avg = np.average(fmri, axis=3)
+    bold_percent = 1 + (fmri - fmri_avg[:,:,:,np.newaxis]) / fmri_avg[:,:,:,np.newaxis]
 
-    # Convolve each time slice with the 3D kernel
-    for t in range(flux.shape[-1]):
-        flux_conv[:, :, :, t] = convolve(flux[:, :, :, t], kernel, mode='constant', cval=0.0)
-        
-    # Extract the time components at the specified 3D points
-    x_indices = points_3d[:, 0].astype(int)
-    y_indices = points_3d[:, 1].astype(int)
-    z_indices = points_3d[:, 2].astype(int)
+    # plot_bold(seg_transformed, bold_percent[...,0])
 
-    return flux_conv[x_indices, y_indices, z_indices, :]
+    optical_vol, optical_baseline = _boldpercent2optical(bold_percent, seg_transformed, media_properties)
+    return optical_vol, optical_baseline
