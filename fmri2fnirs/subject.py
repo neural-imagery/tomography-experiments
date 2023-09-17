@@ -15,8 +15,9 @@ class Subject(object):
     This class defines a NSD subject.
     """
     
-    def __init__(self, id, ):
+    def __init__(self, id):
         self.id = id
+        self.path = f"data/sub{self.id}/anat/"
         self.segmentation = self._get_seg()
     
     ###########################################################################
@@ -39,21 +40,21 @@ class Subject(object):
         seg_data : 3D numpy array of shape (x, y, z)
         """
         resolution = "1pt0"
-        path       = f"data/sub{self.id}/anat/"
         T1_file    = f"T1_{resolution}_masked"
         seg_ext    = "_head_seg.nii.gz"
         
-        if os.path.isfile(path+T1_file+seg_ext): seg_data = nib.load(path+T1_file+seg_ext).get_fdata()
+        if os.path.isfile(self.path+T1_file+seg_ext): 
+            seg_data = nib.load(self.path+T1_file+seg_ext).get_fdata()
         else:
 
             print("Creating anatomical segmentation...")
             # create directory
-            if not os.path.exists(path): os.makedirs(path)
+            if not os.path.exists(self.path): os.makedirs(self.path)
         
             # get anatomical NSD data
             url  = f"https://natural-scenes-dataset.s3.amazonaws.com/nsddata/ppdata/subj{self.id}/anat/"
-            head_mask_data = utils.download_nsd_file(url, path, f"brainmask_{resolution}", return_numpy=True)
-            brain_seg      = utils.get_brain_seg(url, path, T1_file)
+            head_mask_data = utils.download_nsd_file(url, self.path, f"brainmask_{resolution}", return_numpy=True)
+            brain_seg      = utils.get_brain_seg(url, self.path, T1_file)
 
             # create anatomical segmentation 
             seg_data = np.zeros(head_mask_data.shape)
@@ -62,7 +63,7 @@ class Subject(object):
             seg_data[brain_seg.get_fdata()==2] = 3
             seg_data[brain_seg.get_fdata()==3] = 4
             seg = nib.Nifti1Image(seg_data, brain_seg.affine, brain_seg.header)
-            nib.save(seg, path+T1_file+seg_ext)
+            nib.save(seg, self.path+T1_file+seg_ext)
 
         return seg_data
     
@@ -82,7 +83,8 @@ class Subject(object):
                 print("Optodes already placed")
                 return
         
-        segmentation_padded = utils.padz_with0layer(self.segmentation)  # pad z layer with layer of zeros for better edges
+        # pad z layer with layer of zeros for better edges
+        segmentation_padded = utils.padz_with0layer(self.segmentation)
 
         # make mesh
         vertices, _, _, _ = measure.marching_cubes(segmentation_padded, level=0.5)
@@ -103,15 +105,15 @@ class Subject(object):
         
         self.geometry = Geometry(sources, detectors, directions)
     
+    
     ###########################################################################
     # Visualization
     ###########################################################################
 
-    def display_setup(self, seg=None, sources=None, detectors=None):
+    def display_setup(self, seg=None, geom=None):
         
         if seg is None: seg = self.segmentation
-        if sources is None: sources = self.geometry.sources
-        if detectors is None: detectors = self.geometry.detectors
+        if geom is None: geom = self.geometry
 
         nx, ny, nz = seg.shape
         def get_lims_colors(surfacecolor):
@@ -138,11 +140,11 @@ class Subject(object):
         slice_y = get_the_slice(x, y, z, surfcolor_y)
 
         # plot points
-        scatter_sources = go.Scatter3d(name='sources', x=sources[:,0], 
-                                       y=sources[:,1], z=sources[:,2], 
+        scatter_sources = go.Scatter3d(name='sources', x=geom.sources[:,0], 
+                                       y=geom.sources[:,1], z=geom.sources[:,2], 
                                        mode='markers', marker=dict(size=3, color='red'))
-        scatter_detectors = go.Scatter3d(name='detectors', x=detectors[:,0], 
-                                         y=detectors[:,1], z=detectors[:,2], 
+        scatter_detectors = go.Scatter3d(name='detectors', x=geom.detectors[:,0], 
+                                         y=geom.detectors[:,1], z=geom.detectors[:,2], 
                                          mode='markers', marker=dict(size=3, color='blue'))
 
         fig1 = go.Figure(data=[slice_z, slice_y, scatter_sources, scatter_detectors])
@@ -152,6 +154,7 @@ class Subject(object):
                 coloraxis=dict(colorscale='deep', colorbar_thickness=25, colorbar_len=0.75,
                                 **colorax(vmin, vmax)))
         fig1.show()
+    
     
     ###########################################################################
     # Transform
@@ -163,7 +166,6 @@ class Subject(object):
         """
 
         resolution = "1pt0"
-        anat_path = f"data/sub{self.id}/anat/"
         func_path = f"data/sub{self.id}/func/fmri/sess{sessionID}/run{runID}/"
         T1_file   = f"T1_{resolution}_masked"
         fmri_file = f"sub-{self.id}_ses-nsd{sessionID}_task-nsdcore_run-{runID}_bold"
@@ -185,16 +187,18 @@ class Subject(object):
             # os.system(f"flirt -in {anat_seg_file} -ref {func_path}{fmri_file}{ext} -out {func_path}{seg_file}{ext}")
 
             # get transform matrix
-            os.system(f"flirt -in {anat_path}{T1_file}{ext} -ref {func_path}{fmri_file}{ext} -omat {func_path}anat2func.mat")
+            os.system(f"flirt -in {self.path}{T1_file}{ext} -ref {func_path}{fmri_file}{ext} -omat {func_path}anat2func.mat")
 
             # apply transform to segmentation
-            os.system(f"flirt -in {anat_path}{T1_file}_{seg_file}{ext} -ref {func_path}{fmri_file}{ext} -applyxfm -init {func_path}anat2func.mat -out {func_path}{seg_file}{ext}")
+            os.system(f"flirt -in {self.path}{T1_file}_{seg_file}{ext} -ref {func_path}{fmri_file}{ext} -applyxfm -init {func_path}anat2func.mat -out {func_path}{seg_file}{ext}")
 
             # load and save functional segmentation
             seg = np.round(nib.load(func_path+seg_file+ext).get_fdata()).astype('uint8')
             np.save(func_path+seg_file+".npy", seg)
+        
+        geometry = utils.transform_geometry(self, seg)
             
-        return seg
+        return seg, geometry
 
         
         

@@ -6,6 +6,9 @@ from sklearn.cluster import KMeans
 from scipy.spatial import KDTree
 from scipy.linalg import svd
 
+from skimage import measure
+from geometry import Geometry
+
 ###############################################################################
 # Segmentation
 ###############################################################################
@@ -213,3 +216,46 @@ def save_optodes_json(
     #     "issaveseed": 1,  # set this flag to store dtected photon seed data
     # }
     return  # cfg,json_inp,sources_list
+
+def transform_geometry(subj, seg_transformed):
+    # Anatomy positions
+    detpos_anat = subj.geometry.detectors[:, :3]
+    shapea = subj.segmentation.shape
+    vertex_anat, _, _, _ = measure.marching_cubes(
+        np.vstack([subj.segmentation, np.zeros([1, shapea[1], shapea[2]])]), level=0.5)
+    centroid_anat = np.mean(vertex_anat, axis=0)
+
+    # Functional positions
+    shapef = seg_transformed.shape
+    vertex_functional, _, _, _ = measure.marching_cubes(
+        np.vstack([seg_transformed, np.zeros([1, shapef[1], shapef[2]])]), level=0.5)
+    centroid_func = np.mean(vertex_functional, axis=0)
+
+    # Vector from anatomic to functional centroid
+    vec_anat2func = centroid_func - centroid_anat
+
+    # Volume calculations
+    seg_anat = subj.segmentation.copy()
+    seg_anat[seg_anat > 0] = 1
+    vol_anat = np.sum(seg_anat.flatten())
+
+    seg_func = seg_transformed.copy()
+    seg_func[seg_func > 0] = 1
+    vol_func = np.sum(seg_func.flatten())
+
+    # Scale calculation
+    scale = (vol_func / vol_anat)**(1 / 3)
+
+    # Transform points
+    def transform_a2b(points_a, center_a, center_b, scale):
+        return (points_a - center_a) * scale + center_b
+
+    detpos_func = transform_a2b(detpos_anat, centroid_anat, centroid_func, scale)
+    detpos_func = np.hstack([detpos_func, np.ones([detpos_func.shape[0], 1])])
+
+    srcpos_func = transform_a2b(subj.geometry.sources, centroid_anat, centroid_func, scale)
+    srcdir_func = subj.geometry.directions
+
+    geometry = Geometry(srcpos_func, detpos_func, srcdir_func)
+
+    return geometry
