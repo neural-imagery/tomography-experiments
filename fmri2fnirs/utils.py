@@ -92,7 +92,7 @@ def _euclidean_distance(a,b):
     return np.linalg.norm(a-b)
 
 # uniformly sampled
-def get_probes(n: int, vertices):
+def get_probes(n: int, vertices, frac_closer = 0.03):
     kmeans = KMeans(n_clusters=n)
     kmeans.fit(vertices)
     labels = kmeans.predict(vertices)
@@ -103,9 +103,9 @@ def get_probes(n: int, vertices):
         distances = [_euclidean_distance(c, centroids[i]) for c in cluster]
         central_points.append(cluster[np.argmin(distances)])
     com = vertices.mean(axis=0) # center of mass
-    print("Probes placed... Bringing toward center in by 3%")
+    print(f"Probes placed... Bringing toward center in by {100*frac_closer}%")
     central_points = np.array(
-        [i * 0.97 + com * 0.03 for i in central_points]
+        [i * (1-frac_closer) + com * frac_closer for i in central_points]
     )
     central_points = np.asarray(central_points)
     return central_points 

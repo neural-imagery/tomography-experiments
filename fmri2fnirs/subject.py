@@ -74,7 +74,7 @@ class Subject(object):
     ###########################################################################
 
     def place_optodes(self, nsources: int = 10, ndetectors: int = 100, 
-                        detrad : float = 3):
+                        detrad : float = 3, frac_closer=0.03):
         """
         Get optode locations from brain segmentation
         """
@@ -95,11 +95,11 @@ class Subject(object):
         vertices = vertices[(vertices[:,2] > c[2]) | ((vertices[:,2] - c[2]) > (vertices[:,1] - c[1]))]
 
         # place optodes uniformly
-        detectors = utils.get_probes(ndetectors, vertices) 
+        detectors = utils.get_probes(ndetectors, vertices, frac_closer=frac_closer)
 
         # add radius to detectors
         detectors = np.hstack([detectors, np.ones([len(detectors), 1]) * detrad])
-        sources = utils.get_probes(nsources, vertices) 
+        sources = utils.get_probes(nsources, vertices, frac_closer=frac_closer)
         directions = utils.get_normals(sources, vertices)  # Find orthogonal directions of sources (pointing into brain)
         
         self.geometry = Geometry(sources, detectors, directions)
