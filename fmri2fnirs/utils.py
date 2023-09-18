@@ -93,7 +93,7 @@ def _euclidean_distance(a,b):
 
 # uniformly sampled
 def get_probes(n: int, vertices, frac_closer = 0.03):
-    kmeans = KMeans(n_clusters=n)
+    kmeans = KMeans(n_clusters=n, random_state=42)
     kmeans.fit(vertices)
     labels = kmeans.predict(vertices)
     centroids = kmeans.cluster_centers_
