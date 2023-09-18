@@ -389,9 +389,9 @@ def _boldpercent2optical(bold_change, seg_transformed, media_properties):
 
     Returns
     -------
-    dabs1 : 3D numpy array of absorption changes at 690 nm
+    dabs_690 : 3D numpy array of absorption changes at 690 nm
         3D array of shape (x, y, z)
-    dabs2 : 3D numpy array of absorption changes at 850 nm
+    dabs_850 : 3D numpy array of absorption changes at 850 nm
         3D array of shape (x, y, z)
 
     """
@@ -404,10 +404,10 @@ def _boldpercent2optical(bold_change, seg_transformed, media_properties):
 
     # 2. compute absorption coefficient change at 2 wavelengths (690 nm and 850 nm)
     # Source: Irving & Bigio, Quantitative Biomedical Optics
-    dabs1 = 4922 * hb_change + 718.9 * hbO2_change # 690 nm
-    dabs2 = 1810 * hb_change + 2669 * hbO2_change # 850 nm
+    dabs_690 = 4922 * hb_change + 718.9 * hbO2_change # 690 nm
+    dabs_850 = 1810 * hb_change + 2669 * hbO2_change # 850 nm
 
-    return dabs1, dabs2
+    return dabs_690, dabs_850
 
 
 def fmri2optical(fmri, seg_transformed, media_properties):
@@ -422,8 +422,8 @@ def fmri2optical(fmri, seg_transformed, media_properties):
 
     # plot_bold(seg_transformed, bold_percent[...,0])
 
-    dabs1, dabs2 = _boldpercent2optical(one_over_bold_percent, seg_transformed, media_properties)
-    return dabs1, dabs2
+    dabs_690, dabs_850 = _boldpercent2optical(one_over_bold_percent, seg_transformed, media_properties)
+    return dabs_690, dabs_850
 
 def get_detector_data(res: dict, cfg: dict):
     """
