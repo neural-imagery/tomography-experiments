@@ -205,7 +205,7 @@ class Subject(object):
         anat2func = np.loadtxt(func_path+"anat2func.mat")
         sources   = transform_points(anat2func, self.geometry.sources)
         detectors = transform_points(anat2func, self.geometry.detectors[:,:3])
-        detectors = np.hstack([detectors, self.geometry.detectors[:,3:]])
+        detectors = np.hstack([detectors, 2*self.geometry.detectors[:,3:]])
         directions = (anat2func[:3,:3]@self.geometry.directions.T).T
         directions = directions / np.linalg.norm(directions, axis=1, keepdims=True)
         
