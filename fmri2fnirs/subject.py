@@ -198,7 +198,7 @@ class Subject(object):
         
 
         # transform geometry with scaling from 1mm to 1.8mm
-        def transform_points(M,v, scaling=1/2):
+        def transform_points(M,v, scaling=1/1.8):
             v = np.hstack([v, np.ones((v.shape[0], 1))])
             return (M@v.T).T[:,:3] * scaling
         
