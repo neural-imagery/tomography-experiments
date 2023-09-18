@@ -361,9 +361,7 @@ def animate_flux(res, seg_transformed):
 
 # fMRI
 
-def _boldpercent2optical(bold_change, seg_transformed, media_properties):
-    
-    # 1. build baseline optical properties
+def get_optical_baseline(seg_transformed, media_properties):
     # optical_baseline should be of shape (2, x,y,z)
     newshape = (2, *seg_transformed.shape)
     optical_baseline = np.zeros(newshape)
@@ -371,25 +369,45 @@ def _boldpercent2optical(bold_change, seg_transformed, media_properties):
         # when seg_transformed == idx, optical_baseline[0] == prop[0], optical_baseline[1] == prop[1]
         optical_baseline[0][seg_transformed == idx] = prop[0] # mu_a
         optical_baseline[1][seg_transformed == idx] = prop[1] # mu_s
-    
+    return optical_baseline
 
-    # 2. build optical properties change
-    optical_change = (bold_change - 1) * 0.20 + 1 # scientific scaling factor BOLD -> optical
-    
-    optical_vol = optical_baseline[..., np.newaxis]  # Adds a new axis along the last dimension
+def _boldpercent2optical(bold_change, seg_transformed, media_properties):
+    """
+    Converts 1/BOLD percent change to optical properties change (µ_a)
 
-    # Now fill in the new dimension
-    optical_vol = np.repeat(optical_vol, bold_change.shape[-1], axis=-1)
+    We use the rough estimates from Fig. 5 in:
+    https://www.nmr.mgh.harvard.edu/optics/PDF/Strangman_NeuroImage_17_719_2002.pdf
 
-    # print(optical_change.shape, seg_transformed.shape)
-    for i in range(optical_vol.shape[-1]):
-        optical_vol[0,:,:,:,i] *= optical_change[:,:,:,i] * (seg_transformed > 2) # white and grey matter
-    
-    # put back the removed properties 
-    for i in [0,1,2]:
-        optical_vol[0,:,:,:][seg_transformed == i] = media_properties[i][0]
+    Parameters
+    ----------
+    bold_change : 4D numpy array
+        4D array of shape (x, y, z, t)
+    seg_transformed : 3D numpy array
+        3D array of shape (x, y, z)
+    media_properties : list of lists
+        Each list contains [mu_a, mu_s, g, n]
 
-    return optical_vol.astype(np.float32), optical_baseline.astype(np.float32)
+    Returns
+    -------
+    dabs1 : 3D numpy array of absorption changes at 690 nm
+        3D array of shape (x, y, z)
+    dabs2 : 3D numpy array of absorption changes at 850 nm
+        3D array of shape (x, y, z)
+
+    """
+    # only update in white & gray matter
+    bold_change = np.ma.masked_where(seg_transformed <= 2, bold_change)
+
+    # 1. estimate change in hb/hbO (10% change in 1/BOLD -> -2.5 µM change in hb, 1.25 µM change in hbO2)
+    hb_change = bold_change * -2.5 / 0.1 * 1e-6 # Molar
+    hbO2_change = bold_change * 1.25 / 0.1 * 1e-6 # Molar
+
+    # 2. compute absorption coefficient change at 2 wavelengths (690 nm and 850 nm)
+    # Source: Irving & Bigio, Quantitative Biomedical Optics
+    dabs1 = 4922 * hb_change + 718.9 * hbO2_change # 690 nm
+    dabs2 = 1810 * hb_change + 2669 * hbO2_change # 850 nm
+
+    return dabs1, dabs2
 
 
 def fmri2optical(fmri, seg_transformed, media_properties):
@@ -399,12 +417,13 @@ def fmri2optical(fmri, seg_transformed, media_properties):
     media_properties: list of lists, each list contains [mu_a, mu_s, g, n]
     """
     fmri_avg = np.average(fmri, axis=3)
-    bold_percent = 1 + (fmri - fmri_avg[:,:,:,np.newaxis]) / fmri_avg[:,:,:,np.newaxis]
+    bold_percent = (fmri - fmri_avg[:,:,:,np.newaxis]) / fmri_avg[:,:,:,np.newaxis]
+    one_over_bold_percent = 1 / bold_percent
 
     # plot_bold(seg_transformed, bold_percent[...,0])
 
-    optical_vol, optical_baseline = _boldpercent2optical(bold_percent, seg_transformed, media_properties)
-    return optical_vol, optical_baseline
+    dabs1, dabs2 = _boldpercent2optical(one_over_bold_percent, seg_transformed, media_properties)
+    return dabs1, dabs2
 
 def get_detector_data(res: dict, cfg: dict):
     """
