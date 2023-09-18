@@ -315,7 +315,7 @@ def plot_bold(anat_seg, bold, slice=42):
 # MCX
 ###############################################################################
 
-def get_detector_data(flux, points_3d, detector_radius=5):
+def get_detector_data_from_flux(flux, points_3d, detector_radius=5):
     """
     flux: 4D numpy array
     points_3d: 2D numpy array of shape (n, 3)
@@ -405,3 +405,38 @@ def fmri2optical(fmri, seg_transformed, media_properties):
 
     optical_vol, optical_baseline = _boldpercent2optical(bold_percent, seg_transformed, media_properties)
     return optical_vol, optical_baseline
+
+def get_detector_data(res: dict, cfg: dict):
+    """
+    Converts the output of pmcx.run() into a (ndetectors,) np.ndarray
+
+    Parameters
+    ----------
+    res : dict
+        output of pmcx.run()
+    cfg : dict
+        configuration dictionary used to run pmcx
+
+    Returns
+    -------
+    data : (ndetectors,) np.ndarray
+    """
+    detp = res['detp']
+    
+    # detp[0] is the detector id, detp[1:nprops] is the path length in each medium
+
+    # For each measurement, we multiply the path length in each medium by the absorption coefficient, and exponentiate
+    # to get the intensity.
+
+    ndetectors = cfg['detpos'].shape[0]
+
+    pathlengths = detp[1:]
+    absorption_coefficients = np.array(cfg['prop'])[1:, 0] # exclude background
+
+    intensities = np.exp(-absorption_coefficients @ pathlengths * cfg['unitinmm']) # (nmeas,)
+
+    data = np.bincount(detp[0].astype('int64'), weights=intensities, minlength=ndetectors)
+
+
+    # data = np.bincount(detp[0].astype('int64'), minlength=ndetectors)
+    return data
