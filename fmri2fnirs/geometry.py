@@ -1,5 +1,3 @@
-
-
 class Geometry(object):
     """
     This class defines the source and detector geometry for a NSD subject.

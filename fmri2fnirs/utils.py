@@ -72,25 +72,9 @@ def get_brain_seg(url, path, T1_file, ext=".nii.gz"):
 # Geometry
 ###############################################################################
 
-# def get_probes_rand(n: int, vertices):
-#     probes = vertices[
-#         np.random.choice(np.arange(len(vertices)), 4 * n)
-#     ]  # randomly over sample vertices
-#     vertices_z = vertices[:, 2]
-#     vertices_mid = (
-#         min(vertices_z) + max(vertices_z)
-#     ) / 2  # mid-point, only put electrodes on top half of brain
-#     probes_z = probes[:, 2]
-#     probes = probes[np.where(probes_z >= vertices_mid)]  # throw away bottom half
-#     probes = probes[:n]
-#     c = np.mean(vertices, axis=0)  # Coordinate of center of mass
-#     probes = np.array(
-#         [i * 0.99 + c * 0.01 for i in probes]
-#     )  # bring sources a tiny bit into the brain 1%, make sure in tissue
-#     return probes
-
 def _euclidean_distance(a,b):
     return np.linalg.norm(a-b)
+
 
 # uniformly sampled
 def get_probes(n: int, vertices, frac_closer = 0.03):
@@ -130,6 +114,7 @@ def get_normals(sources, vertices):
         normals.append(normal_vector)
     return np.asarray(normals)
 
+
 def padz_with0layer(vol: np.ndarray):
     """
     Add a layer of zeros at the top so that the surface finds the top of the brain
@@ -137,53 +122,36 @@ def padz_with0layer(vol: np.ndarray):
     return np.vstack([vol.T, np.zeros([1, vol.shape[1], vol.shape[2]])]).T
 
 
-def transform_geometry(subj, seg_transformed):
-    # Anatomy positions
-    detpos_anat = subj.geometry.detectors[:, :3]
-    shapea = subj.segmentation.shape
-    vertex_anat, _, _, _ = measure.marching_cubes(
-        np.vstack([subj.segmentation, np.zeros([1, shapea[1], shapea[2]])]), level=0.5)
-    centroid_anat = np.mean(vertex_anat, axis=0)
-
-    # Functional positions
-    shapef = seg_transformed.shape
-    vertex_functional, _, _, _ = measure.marching_cubes(
-        np.vstack([seg_transformed, np.zeros([1, shapef[1], shapef[2]])]), level=0.5)
-    centroid_func = np.mean(vertex_functional, axis=0)
-
-    # Vector from anatomic to functional centroid
-    vec_anat2func = centroid_func - centroid_anat
-
-    # Volume calculations
-    seg_anat = subj.segmentation.copy()
-    seg_anat[seg_anat > 0] = 1
-    vol_anat = np.sum(seg_anat.flatten())
-
-    seg_func = seg_transformed.copy()
-    seg_func[seg_func > 0] = 1
-    vol_func = np.sum(seg_func.flatten())
-
-    # Scale calculation
-    scale = (vol_func / vol_anat)**(1 / 3)
-
-    # Transform points
-    def transform_a2b(points_a, center_a, center_b, scale):
-        return (points_a - center_a) * scale + center_b
-
-    detpos_func = transform_a2b(detpos_anat, centroid_anat, centroid_func, scale)
-    detpos_func = np.hstack([detpos_func, np.ones([detpos_func.shape[0], 1])])
-
-    srcpos_func = transform_a2b(subj.geometry.sources, centroid_anat, centroid_func, scale)
-    srcdir_func = subj.geometry.directions
-
-    geometry = Geometry(srcpos_func, detpos_func, srcdir_func)
-
-    return geometry
-
-
 ###############################################################################
 # MCX
 ###############################################################################
+
+def forward(vol, geom, props, src_idx=0):
+    """
+    Implements the forward monte carlo solver for a given source.
+    """
+
+    cfg = {
+        'nphoton': 1000000,
+        'vol': vol,
+        'tstart': 0,
+        'tend': 1e-8,
+        'tstep': 1e-8,
+        'srcpos': geom.sources[src_idx],
+        'srcdir': geom.directions[src_idx],
+        'prop': props,
+        'detpos': geom.detectors,
+        'replaydet':-1,
+        'issavedet': 1,
+        'issrcfrom0': 1,
+        'issaveseed': 1,
+        'unitinmm': 1.8,
+        'maxdetphoton': 1000000000
+    }
+
+    res = pmcx.run(cfg)
+
+    return res, cfg
 
 def get_detector_data(res: dict, cfg: dict):
     """
@@ -219,28 +187,9 @@ def get_detector_data(res: dict, cfg: dict):
 
     return data
 
-
 def run_baseline(seg, geom, props, src_idx, display_flux=False, time_idx=None):
 
-    cfg = {
-        'nphoton': 1000000,
-        'vol': seg,
-        'tstart': 0,
-        'tend': 1e-8,
-        'tstep': 1e-8,
-        'srcpos': geom.sources[src_idx],
-        'srcdir': geom.directions[src_idx],
-        'prop': props,
-        'detpos': geom.detectors,
-        'replaydet':-1,
-        'issavedet': 1,
-        'issrcfrom0': 1,
-        'issaveseed': 1,
-        'unitinmm': 1.8,
-        'maxdetphoton': 1000000000
-        }
-
-    res = pmcx.run(cfg)
+    res, cfg = forward(seg, geom, props, src_idx)
     data = get_detector_data(res, cfg)
     
     if display_flux:
@@ -250,22 +199,88 @@ def run_baseline(seg, geom, props, src_idx, display_flux=False, time_idx=None):
     return data, res, cfg
 
 
-def compute_jacobian(res, cfg, geometry, display_jacobian=False, time_idx=None):
+def compute_jacobian(res, cfg, geometry, display_jacobian=False, detector_idx=None):
     
     cfg['seed']       = res['seeds']  # one must define cfg['seed'] using the returned seeds
     cfg['detphotons'] = res['detp']   # one must define cfg['detphotons'] using the returned detp data
     cfg['outputtype'] = 'jacobian'    # tell mcx to output absorption (μ_a) Jacobian
 
+    res2 = pmcx.run(cfg)
+
     if display_jacobian:
-        if time_idx is None: time_idx = 0
-        display_3d(res['flux'][:,:,:,time_idx], geometry)
+        if detector_idx is None: detector_idx = 0
+        display_3d(np.squeeze(res2['flux'])[...,detector_idx], geometry)
 
-    return pmcx.run(cfg)
-
+    return res2
 
 ###############################################################################
-# fMRI BOLD
+# fMRI
 ###############################################################################
+
+def transform_points(points, matrix, scaling=1/1.8):
+    """
+    4x4 affine transform of 3D points
+    """
+    points = np.hstack([points, np.ones((points.shape[0], 1))])
+    return (matrix@points.T).T[:,:3] * scaling
+
+def transform_volume(vol, matrix, output_shape, scaling=1/1.8):
+    
+    # Create scaling matrix
+    scaling_matrix = np.array([[scaling, 0, 0, 0],
+                               [0, scaling, 0, 0],
+                               [0, 0, scaling, 0],
+                               [0, 0, 0, 1]])
+    
+    # Combine scaling matrix with the transform matrix
+    combined_transform_matrix = np.dot(scaling_matrix, matrix)
+    
+    # Generate a grid for the output shape
+    x, y, z = np.meshgrid(np.arange(output_shape[0]),
+                          np.arange(output_shape[1]),
+                          np.arange(output_shape[2]), indexing='ij')
+    
+    homogeneous_coordinates = np.stack((x, y, z, np.ones(output_shape)), axis=-1)
+    inverse_transform = np.linalg.inv(combined_transform_matrix)
+    input_coordinates = np.einsum('...ij,...j->...i', inverse_transform, homogeneous_coordinates)
+    
+    x_in, y_in, z_in, _ = np.split(input_coordinates, 4, axis=-1)
+    
+    # Floor and clip the coordinates
+    x0 = np.floor(x_in).astype(int).clip(0, vol.shape[0] - 1)
+    x1 = np.clip(x0 + 1, 0, vol.shape[0] - 1)
+    y0 = np.floor(y_in).astype(int).clip(0, vol.shape[1] - 1)
+    y1 = np.clip(y0 + 1, 0, vol.shape[1] - 1)
+    z0 = np.floor(z_in).astype(int).clip(0, vol.shape[2] - 1)
+    z1 = np.clip(z0 + 1, 0, vol.shape[2] - 1)
+    
+    # Interpolation weights
+    wa = (x1 - x_in) * (y1 - y_in) * (z1 - z_in)
+    wb = (x1 - x_in) * (y1 - y_in) * (z_in - z0)
+    wc = (x1 - x_in) * (y_in - y0) * (z1 - z_in)
+    wd = (x1 - x_in) * (y_in - y0) * (z_in - z0)
+    we = (x_in - x0) * (y1 - y_in) * (z1 - z_in)
+    wf = (x_in - x0) * (y1 - y_in) * (z_in - z0)
+    wg = (x_in - x0) * (y_in - y0) * (z1 - z_in)
+    wh = (x_in - x0) * (y_in - y0) * (z_in - z0)
+    
+    if vol.ndim == 4:
+        vol_out = wa[..., np.newaxis] * vol[x0, y0, z0, :] + \
+                    wb[..., np.newaxis] * vol[x0, y0, z1, :] + \
+                    wc[..., np.newaxis] * vol[x0, y1, z0, :] + \
+                    wd[..., np.newaxis] * vol[x0, y1, z1, :] + \
+                    we[..., np.newaxis] * vol[x1, y0, z0, :] + \
+                    wf[..., np.newaxis] * vol[x1, y0, z1, :] + \
+                    wg[..., np.newaxis] * vol[x1, y1, z0, :] + \
+                    wh[..., np.newaxis] * vol[x1, y1, z1, :]
+    else:
+        vol_out = np.squeeze(wa * vol[x0, y0, z0] + wb * vol[x0, y0, z1] + \
+              wc * vol[x0, y1, z0] + wd * vol[x0, y1, z1] + \
+              we * vol[x1, y0, z0] + wf * vol[x1, y0, z1] + \
+              wg * vol[x1, y1, z0] + wh * vol[x1, y1, z1])
+
+    return vol_out
+
 
 def _boldpercent2optical(bold_change, seg_transformed):
     """
