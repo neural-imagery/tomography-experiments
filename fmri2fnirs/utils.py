@@ -223,7 +223,7 @@ def get_detector_data(res: dict, cfg: dict):
 def run_baseline(seg, geom, props, src_idx, display_flux=False, time_idx=None):
 
     cfg = {
-        'nphoton': 100000000,
+        'nphoton': 1000000,
         'vol': seg,
         'tstart': 0,
         'tend': 1e-8,

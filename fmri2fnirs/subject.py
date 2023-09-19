@@ -127,7 +127,7 @@ class Subject(object):
         """
 
         resolution = "1pt0"
-        func_path = f"data/sub{self.id}/func/fmri/sess{sessionID}/run{runID}/"
+        func_path = f"data/sub{self.id}/func/sess{sessionID}/run{runID}/"
         T1_file   = f"T1_{resolution}_masked"
         fmri_file = f"sub-{self.id}_ses-nsd{sessionID}_task-nsdcore_run-{runID}_bold"
         seg_file = "head_seg"
@@ -194,7 +194,7 @@ class Subject(object):
             optical_baseline[1][seg == idx] = prop[1] # mu_s
 
         # changes in baseline over fMRI run
-        fmri = nib.load(f'data/sub{self.id}/func/fmri/sess{sessionID}/run{runID}/sub-{self.id}_ses-nsd{sessionID}_task-nsdcore_run-{runID}_bold.nii.gz').get_fdata()
+        fmri = nib.load(f'data/sub{self.id}/func/sess{sessionID}/run{runID}/sub-{self.id}_ses-nsd{sessionID}_task-nsdcore_run-{runID}_bold.nii.gz').get_fdata()
         fmri_inv = 1 / (fmri + 1e-9)
         fmri_inv_avg = np.average(fmri_inv, axis=3)
         fmri_inv_percent = (fmri_inv - fmri_inv_avg[:,:,:,np.newaxis]) / fmri_inv_avg[:,:,:,np.newaxis]
