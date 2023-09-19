@@ -12,10 +12,11 @@ from geometry import Geometry
 import jdata as jd
 import json
 
+import plotly.graph_objects as go
 import matplotlib.pyplot as plt
-from scipy.ndimage import convolve
-
 import matplotlib.animation as animation
+
+import pmcx
 
 
 ###############################################################################
@@ -135,93 +136,6 @@ def padz_with0layer(vol: np.ndarray):
     """
     return np.vstack([vol.T, np.zeros([1, vol.shape[1], vol.shape[2]])]).T
 
-def save_optodes_json(segmentation, geometry, vol_name="test.json", json_boilerplate: str = "colin27.json"):
-    """
-    Serializes and saves json input to mcx for isual display on mcx cloud. ++other stuff
-
-    Parameters
-    ----------
-    sources : list of np.ndarray
-
-    numpy_fname : str
-        Path to .npy file containing 3d numpy array
-    json_boilerplate : str
-        Path to json boilerplate file.
-    Returns
-    -------
-    cfg : dict
-        Config dictionary to feed to python
-    json_inp : dict
-        JSON dictionary, input to mcx simulations
-    sources_list : list
-        List of dictionaries containing sources information (postion and direction)
-    """
-    # # Load numpy file
-    # vol = np.load(numpy_fname)
-    # vol_name = numpy_fname[:-4] # name of volume file
-
-    ### JSON manipulation
-    # encode & compress vol
-    vol_encoded = jd.encode(
-        np.asarray(segmentation + 0.5, dtype=np.uint8), {"compression": "zlib", "base64": 1}
-    )  # serialize volume
-    # manipulate binary str ing format so that it can be turned into json
-    vol_encoded["_ArrayZipData_"] = str(vol_encoded["_ArrayZipData_"])[2:-1]
-
-    with open(json_boilerplate) as f:
-        json_inp = json.load(f)  # Load boilerplate json to dict
-    json_inp["Shapes"] = vol_encoded  # Replaced volume ("shapes") atribute
-    json_inp["Session"]["ID"] = vol_name  # and model ID
-    # Make optode placement
-    sources_list = []
-    for s, d in zip(geometry.sources, geometry.directions):
-        sources_list.append(
-            {
-                "Type": "pencil",
-                "Pos": [s[0], s[1], s[2]],
-                "Dir": [d[0], d[1], d[2], 0],
-                "Param1": [0, 0, 0, 0],  # cargo cult, dont know what param1 and 2 does
-                "Param2": [0, 0, 0, 0],
-            }
-        )
-    detectors_list = []
-    for d in geometry.detectors:
-        detectors_list.append({"Pos": [d[0], d[1], d[2]], "R": d[3]})
-    json_inp["Optode"] = {
-        "Source": sources_list[
-            0
-        ],  # For the json we just pick one source, just for mcx viz
-        "Detector": detectors_list,
-    }
-    json_inp["Domain"]["Dim"] = [
-        int(i) for i in segmentation.shape
-    ]  # Set the spatial domain of Simulation
-    with open(vol_name, "w") as f:
-        json.dump(json_inp, f, indent=4)  # Write above changes to file
-    print(f"Saved to {vol_name}")
-
-    # ### Build Config File
-    # # Get the layer properties [mua,mus,g,n] from default colin27
-    # prop = [list(i.values()) for i in json_inp["Domain"]["Media"]]
-    # # position detectors in a way python bindings like
-    # detpos = [i["Pos"] + [i["R"]] for i in detectors_list]
-    # 
-    #### Build cfg dict
-    # cfg = {
-    #     "nphoton": int(1e7),
-    #     "vol": self.segmentation,
-    #     "tstart": 0,
-    #     "tend": 5e-9,
-    #     "tstep": 5e-9,
-    #     "srcpos": sources_list[0]["Pos"],
-    #     "srcdir": sources_list[0]["Dir"],
-    #     "prop": prop,
-    #     "detpos": detpos,  # to detect photons, [x,y,z,radius]
-    #     "issavedet": 1,  # not sure how important the rest below this line is
-    #     "issrcfrom0": 1,  # flag ensure src/det coordinates align with voxel space
-    #     "issaveseed": 1,  # set this flag to store dtected photon seed data
-    # }
-    return  # cfg,json_inp,sources_list
 
 def transform_geometry(subj, seg_transformed):
     # Anatomy positions
@@ -265,6 +179,151 @@ def transform_geometry(subj, seg_transformed):
     geometry = Geometry(srcpos_func, detpos_func, srcdir_func)
 
     return geometry
+
+
+###############################################################################
+# MCX
+###############################################################################
+
+def get_detector_data(res: dict, cfg: dict):
+    """
+    Converts the output of pmcx.run() into a (ndetectors,) np.ndarray
+
+    Parameters
+    ----------
+    res : dict
+        output of pmcx.run()
+    cfg : dict
+        configuration dictionary used to run pmcx
+
+    Returns
+    -------
+    data : (ndetectors,) np.ndarray
+    """
+    detp = res['detp']
+    
+    # detp[0] is the detector id, detp[1:nprops] is the path length in each medium
+
+    # For each measurement, we multiply the path length in each medium by the absorption coefficient, and exponentiate
+    # to get the intensity.
+
+    ndetectors = cfg['detpos'].shape[0]
+
+    pathlengths = detp[1:]
+    absorption_coefficients = np.array(cfg['prop'])[1:, 0] # exclude background
+
+    intensities = np.exp(-absorption_coefficients @ pathlengths * cfg['unitinmm']) # (nmeas,)
+
+    data = np.bincount(detp[0].astype('int64'), weights=intensities, minlength=(ndetectors+1))[1:] # there is no detector 0
+    # data = np.bincount(detp[0].astype('int64'), minlength=ndetectors)
+
+    return data
+
+
+def run_baseline(seg, geom, props, src_idx, display_flux=False, time_idx=None):
+
+    cfg = {
+        'nphoton': 100000000,
+        'vol': seg,
+        'tstart': 0,
+        'tend': 1e-8,
+        'tstep': 1e-8,
+        'srcpos': geom.sources[src_idx],
+        'srcdir': geom.directions[src_idx],
+        'prop': props,
+        'detpos': geom.detectors,
+        'replaydet':-1,
+        'issavedet': 1,
+        'issrcfrom0': 1,
+        'issaveseed': 1,
+        'unitinmm': 1.8,
+        'maxdetphoton': 1000000000
+        }
+
+    res = pmcx.run(cfg)
+    data = get_detector_data(res, cfg)
+    
+    if display_flux:
+        if time_idx is None: time_idx = 0
+        display_3d(res['flux'][...,time_idx], geom)
+
+    return data, res, cfg
+
+
+def compute_jacobian(res, cfg, geometry, display_jacobian=False, time_idx=None):
+    
+    cfg['seed']       = res['seeds']  # one must define cfg['seed'] using the returned seeds
+    cfg['detphotons'] = res['detp']   # one must define cfg['detphotons'] using the returned detp data
+    cfg['outputtype'] = 'jacobian'    # tell mcx to output absorption (μ_a) Jacobian
+
+    if display_jacobian:
+        if time_idx is None: time_idx = 0
+        display_3d(res['flux'][:,:,:,time_idx], geometry)
+
+    return pmcx.run(cfg)
+
+
+###############################################################################
+# fMRI BOLD
+###############################################################################
+
+def _boldpercent2optical(bold_change, seg_transformed):
+    """
+    Converts 1/BOLD percent change to optical properties change (µ_a)
+
+    We use the rough estimates from Fig. 5 in:
+    https://www.nmr.mgh.harvard.edu/optics/PDF/Strangman_NeuroImage_17_719_2002.pdf
+
+    Parameters
+    ----------
+    bold_change : 4D numpy array
+        4D array of shape (x, y, z, t)
+    seg_transformed : 3D numpy array
+        3D array of shape (x, y, z)
+    media_properties : list of lists
+        Each list contains [mu_a, mu_s, g, n]
+
+    Returns
+    -------
+    dabs_690 : 3D numpy array of absorption changes at 690 nm
+        3D array of shape (x, y, z)
+    dabs_850 : 3D numpy array of absorption changes at 850 nm
+        3D array of shape (x, y, z)
+
+    """
+    # only update in white & gray matter
+    bold_change = bold_change * (seg_transformed[..., np.newaxis] > 2)
+
+    # 1. estimate change in hb/hbO (10% change in 1/BOLD -> -2.5 µM change in hb, 1.25 µM change in hbO2)
+    hb_change = bold_change * -2.5 / 0.1 * 1e-6 # Molar
+    hbO2_change = bold_change * 1.25 / 0.1 * 1e-6 # Molar
+
+    # 2. compute absorption coefficient change at 2 wavelengths (690 nm and 850 nm)
+    # Source: Irving & Bigio, Quantitative Biomedical Optics
+    dabs_690 = 492.2 * hb_change + 71.89 * hbO2_change # (mm^-1) at 690 nm
+    dabs_850 = 181.0 * hb_change + 266.9 * hbO2_change # (mm^-1) at 850 nm
+
+    return dabs_690, dabs_850
+
+
+def fmri2optical(fmri, seg_transformed):
+    """
+    fmri: 4D numpy array
+    anat_seg: 3D numpy array
+    media_properties: list of lists, each list contains [mu_a, mu_s, g, n]
+    """
+    fmri_inv = 1 / (fmri + 1e-9)
+    fmri_inv_avg = np.average(fmri_inv, axis=3)
+    fmri_inv_percent = (fmri_inv - fmri_inv_avg[:,:,:,np.newaxis]) / fmri_inv_avg[:,:,:,np.newaxis]
+
+    # clip to +/- 40%
+    # fmri_inv_percent = np.clip(fmri_inv_percent, -0.4, 0.4)
+
+    # plot_bold(seg_transformed, bold_percent[...,0])
+
+    dabs_690, dabs_850 = _boldpercent2optical(fmri_inv_percent, seg_transformed)
+    return dabs_690, dabs_850
+
 
 def plot_bold(anat_seg, bold, slice=42):
     """
@@ -312,29 +371,51 @@ def plot_bold(anat_seg, bold, slice=42):
     plt.show()
 
 ###############################################################################
-# MCX
+# Visualization
 ###############################################################################
 
-def get_detector_data_from_flux(flux, points_3d, detector_radius=5):
-    """
-    flux: 4D numpy array
-    points_3d: 2D numpy array of shape (n, 3)
-    detector_size: int (mm)
-    """
-    kernel_size = int(detector_radius / 1.8)
-    kernel = np.ones((kernel_size, kernel_size, kernel_size))
-    flux_conv = np.zeros_like(flux)
+def display_3d(vol, geom):
+    
+    nx, ny, nz = vol.shape
+    def get_lims_colors(surfacecolor):
+        return np.min(surfacecolor), np.max(surfacecolor)
+    def get_the_slice(x, y, z, surfacecolor):
+        return go.Surface(x=x, y=y, z=z, surfacecolor=surfacecolor, coloraxis='coloraxis')
+    def colorax(vmin, vmax):
+        return dict(cmin=vmin, cmax=vmax)
+    
+    # plot z slice
+    x = np.arange(nx); y = np.arange(ny); x, y = np.meshgrid(x,y)
+    z_idx = nz//2; z = z_idx * np.ones(x.shape)
+    surfcolor_z = vol[:, :, z_idx].T
+    sminz, smaxz = get_lims_colors(surfcolor_z)
+    slice_z = get_the_slice(x, y, z, surfcolor_z)
+    
+    # plot y slice
+    x = np.arange(nx); z = np.arange(nz); x, z = np.meshgrid(x,z)
+    y_idx = ny//3; y = y_idx * np.ones(x.shape)
+    surfcolor_y = vol[:, y_idx, :].T
+    sminy, smaxy = get_lims_colors(surfcolor_y)
+    vmin = min([sminz, sminy])
+    vmax = max([smaxz, smaxy])
+    slice_y = get_the_slice(x, y, z, surfcolor_y)
 
-    # Convolve each time slice with the 3D kernel
-    for t in range(flux.shape[-1]):
-        flux_conv[:, :, :, t] = convolve(flux[:, :, :, t], kernel, mode='constant', cval=0.0)
-        
-    # Extract the time components at the specified 3D points
-    x_indices = points_3d[:, 0].astype(int)
-    y_indices = points_3d[:, 1].astype(int)
-    z_indices = points_3d[:, 2].astype(int)
+    # plot points
+    scatter_sources = go.Scatter3d(name='sources', x=geom.sources[:,0], 
+                                    y=geom.sources[:,1], z=geom.sources[:,2], 
+                                    mode='markers', marker=dict(size=3, color='red'))
+    scatter_detectors = go.Scatter3d(name='detectors', x=geom.detectors[:,0], 
+                                        y=geom.detectors[:,1], z=geom.detectors[:,2], 
+                                        mode='markers', marker=dict(size=3, color='blue'))
 
-    return flux_conv[x_indices, y_indices, z_indices, :]
+    fig1 = go.Figure(data=[slice_z, slice_y, scatter_sources, scatter_detectors])
+    fig1.update_layout(
+            width=700, height=700,
+            scene_xaxis_range=[0, nx], scene_yaxis_range=[0, ny], scene_zaxis_range=[0, nz], 
+            coloraxis=dict(colorscale='deep', colorbar_thickness=25, colorbar_len=0.75,
+                            **colorax(vmin, vmax)))
+    fig1.show()
+
 
 def animate_flux(res, seg_transformed):
     # Set up the figure
@@ -357,105 +438,3 @@ def animate_flux(res, seg_transformed):
     ani.save('visualization.mp4', writer='ffmpeg', fps=5)
 
     plt.close(fig)
-
-
-# fMRI
-
-def get_optical_baseline(seg_transformed, media_properties):
-    # optical_baseline should be of shape (2, x,y,z)
-    newshape = (2, *seg_transformed.shape)
-    optical_baseline = np.zeros(newshape)
-    for idx, prop in enumerate(media_properties):
-        # when seg_transformed == idx, optical_baseline[0] == prop[0], optical_baseline[1] == prop[1]
-        optical_baseline[0][seg_transformed == idx] = prop[0] # mu_a
-        optical_baseline[1][seg_transformed == idx] = prop[1] # mu_s
-    return optical_baseline
-
-def _boldpercent2optical(bold_change, seg_transformed, media_properties):
-    """
-    Converts 1/BOLD percent change to optical properties change (µ_a)
-
-    We use the rough estimates from Fig. 5 in:
-    https://www.nmr.mgh.harvard.edu/optics/PDF/Strangman_NeuroImage_17_719_2002.pdf
-
-    Parameters
-    ----------
-    bold_change : 4D numpy array
-        4D array of shape (x, y, z, t)
-    seg_transformed : 3D numpy array
-        3D array of shape (x, y, z)
-    media_properties : list of lists
-        Each list contains [mu_a, mu_s, g, n]
-
-    Returns
-    -------
-    dabs_690 : 3D numpy array of absorption changes at 690 nm
-        3D array of shape (x, y, z)
-    dabs_850 : 3D numpy array of absorption changes at 850 nm
-        3D array of shape (x, y, z)
-
-    """
-    # only update in white & gray matter
-    bold_change = np.ma.masked_where(seg_transformed <= 2, bold_change)
-
-    # 1. estimate change in hb/hbO (10% change in 1/BOLD -> -2.5 µM change in hb, 1.25 µM change in hbO2)
-    hb_change = bold_change * -2.5 / 0.1 * 1e-6 # Molar
-    hbO2_change = bold_change * 1.25 / 0.1 * 1e-6 # Molar
-
-    # 2. compute absorption coefficient change at 2 wavelengths (690 nm and 850 nm)
-    # Source: Irving & Bigio, Quantitative Biomedical Optics
-    dabs_690 = 4922 * hb_change + 718.9 * hbO2_change # 690 nm
-    dabs_850 = 1810 * hb_change + 2669 * hbO2_change # 850 nm
-
-    return dabs_690, dabs_850
-
-
-def fmri2optical(fmri, seg_transformed, media_properties):
-    """
-    fmri: 4D numpy array
-    anat_seg: 3D numpy array
-    media_properties: list of lists, each list contains [mu_a, mu_s, g, n]
-    """
-    fmri_avg = np.average(fmri, axis=3)
-    bold_percent = (fmri - fmri_avg[:,:,:,np.newaxis]) / fmri_avg[:,:,:,np.newaxis]
-    one_over_bold_percent = 1 / bold_percent
-
-    # plot_bold(seg_transformed, bold_percent[...,0])
-
-    dabs_690, dabs_850 = _boldpercent2optical(one_over_bold_percent, seg_transformed, media_properties)
-    return dabs_690, dabs_850
-
-def get_detector_data(res: dict, cfg: dict):
-    """
-    Converts the output of pmcx.run() into a (ndetectors,) np.ndarray
-
-    Parameters
-    ----------
-    res : dict
-        output of pmcx.run()
-    cfg : dict
-        configuration dictionary used to run pmcx
-
-    Returns
-    -------
-    data : (ndetectors,) np.ndarray
-    """
-    detp = res['detp']
-    
-    # detp[0] is the detector id, detp[1:nprops] is the path length in each medium
-
-    # For each measurement, we multiply the path length in each medium by the absorption coefficient, and exponentiate
-    # to get the intensity.
-
-    ndetectors = cfg['detpos'].shape[0]
-
-    pathlengths = detp[1:]
-    absorption_coefficients = np.array(cfg['prop'])[1:, 0] # exclude background
-
-    intensities = np.exp(-absorption_coefficients @ pathlengths * cfg['unitinmm']) # (nmeas,)
-
-    data = np.bincount(detp[0].astype('int64'), weights=intensities, minlength=ndetectors)
-
-
-    # data = np.bincount(detp[0].astype('int64'), minlength=ndetectors)
-    return data

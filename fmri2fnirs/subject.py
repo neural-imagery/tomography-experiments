@@ -19,8 +19,17 @@ class Subject(object):
     def __init__(self, id):
         self.id = id
         self.path = f"data/sub{self.id}/anat/"
+        self.sessions = self._init_sessions()
+        self.runs = np.array([str(i).zfill(2) for i in range(1, 13)])
         self.segmentation = self._get_seg()
     
+    def _init_sessions(self):
+        if self.id in ['01','02','05','07']: nsessions = 40
+        elif self.id in ['03', '06']: nsessions = 32
+        elif self.id in ['04', '08']: nsessions = 30
+        else: raise ValueError("Invalid subject ID")
+        return np.array([str(i).zfill(2) for i in range(1, nsessions+1)])
+
     ###########################################################################
     # Segmentation
     ###########################################################################
@@ -74,7 +83,7 @@ class Subject(object):
     ###########################################################################
 
     def place_optodes(self, nsources: int = 10, ndetectors: int = 100, 
-                        detrad : float = 3, frac_closer=0.03):
+                        detrad : float = 3, frac_closer=0.03, display_setup=False):
         """
         Get optode locations from brain segmentation
         """
@@ -103,63 +112,16 @@ class Subject(object):
         directions = utils.get_normals(sources, vertices)  # Find orthogonal directions of sources (pointing into brain)
         
         self.geometry = Geometry(sources, detectors, directions)
+
+        if display_setup:
+            utils.display_3d(self.segmentation, self.geometry)
     
     
     ###########################################################################
-    # Visualization
-    ###########################################################################
-
-    def display_setup(self, seg=None, geom=None):
-        
-        if seg is None: seg = self.segmentation
-        if geom is None: geom = self.geometry
-
-        nx, ny, nz = seg.shape
-        def get_lims_colors(surfacecolor):
-            return np.min(surfacecolor), np.max(surfacecolor)
-        def get_the_slice(x, y, z, surfacecolor):
-            return go.Surface(x=x, y=y, z=z, surfacecolor=surfacecolor, coloraxis='coloraxis')
-        def colorax(vmin, vmax):
-            return dict(cmin=vmin, cmax=vmax)
-        
-        # plot z slice
-        x = np.arange(nx); y = np.arange(ny); x, y = np.meshgrid(x,y)
-        z_idx = nz//2; z = z_idx * np.ones(x.shape)
-        surfcolor_z = seg[:, :, z_idx].T
-        sminz, smaxz = get_lims_colors(surfcolor_z)
-        slice_z = get_the_slice(x, y, z, surfcolor_z)
-        
-        # plot y slice
-        x = np.arange(nx); z = np.arange(nz); x, z = np.meshgrid(x,z)
-        y_idx = ny//3; y = y_idx * np.ones(x.shape)
-        surfcolor_y = seg[:, y_idx, :].T
-        sminy, smaxy = get_lims_colors(surfcolor_y)
-        vmin = min([sminz, sminy])
-        vmax = max([smaxz, smaxy])
-        slice_y = get_the_slice(x, y, z, surfcolor_y)
-
-        # plot points
-        scatter_sources = go.Scatter3d(name='sources', x=geom.sources[:,0], 
-                                       y=geom.sources[:,1], z=geom.sources[:,2], 
-                                       mode='markers', marker=dict(size=3, color='red'))
-        scatter_detectors = go.Scatter3d(name='detectors', x=geom.detectors[:,0], 
-                                         y=geom.detectors[:,1], z=geom.detectors[:,2], 
-                                         mode='markers', marker=dict(size=3, color='blue'))
-
-        fig1 = go.Figure(data=[slice_z, slice_y, scatter_sources, scatter_detectors])
-        fig1.update_layout(
-                width=700, height=700,
-                scene_xaxis_range=[0, nx], scene_yaxis_range=[0, ny], scene_zaxis_range=[0, nz], 
-                coloraxis=dict(colorscale='deep', colorbar_thickness=25, colorbar_len=0.75,
-                                **colorax(vmin, vmax)))
-        fig1.show()
-    
-    
-    ###########################################################################
-    # Transform
+    # fMRI
     ###########################################################################
     
-    def transform(self, sessionID, runID):
+    def transform(self, sessionID, runID, display_setup=False):
         """
         Bring the segmentation and optodes into the run's functional space.
         """
@@ -210,11 +172,36 @@ class Subject(object):
         directions = directions / np.linalg.norm(directions, axis=1, keepdims=True)
         
         geometry = Geometry(sources, detectors, directions)
-        utils.save_optodes_json(seg, geometry)
+        # utils.save_optodes_json(seg, geometry)
+
+        if display_setup: utils.display_3d(seg, geometry)
             
         return seg, geometry
+    
 
+    def get_optics(self, sessionID, runID, seg, props):
+        """
+        Get optical baseline and time-varying changes in optical baseline 
+        (only mu_a for now) over the fMRI run.
+        """
         
-        
+        # baseline
+        newshape = (2, *seg.shape)
+        optical_baseline = np.zeros(newshape)
+        for idx, prop in enumerate(props):
+            # when seg_transformed == idx, optical_baseline[0] == prop[0], optical_baseline[1] == prop[1]
+            optical_baseline[0][seg == idx] = prop[0] # mu_a
+            optical_baseline[1][seg == idx] = prop[1] # mu_s
 
+        # changes in baseline over fMRI run
+        fmri = nib.load(f'data/sub{self.id}/func/fmri/sess{sessionID}/run{runID}/sub-{self.id}_ses-nsd{sessionID}_task-nsdcore_run-{runID}_bold.nii.gz').get_fdata()
+        fmri_inv = 1 / (fmri + 1e-9)
+        fmri_inv_avg = np.average(fmri_inv, axis=3)
+        fmri_inv_percent = (fmri_inv - fmri_inv_avg[:,:,:,np.newaxis]) / fmri_inv_avg[:,:,:,np.newaxis]
+        # clip to +/- 40%
+        fmri_inv_percent = np.clip(fmri_inv_percent, -0.4, 0.4)
+        # plot_bold(seg_transformed, bold_percent[...,0])
+        dmua_690, dmua_850 = utils._boldpercent2optical(fmri_inv_percent, seg)
+        
+        return optical_baseline, dmua_850, dmua_690
 
