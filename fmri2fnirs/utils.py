@@ -18,6 +18,9 @@ import matplotlib.animation as animation
 
 import pmcx
 
+import jax.numpy as jnp
+from jax import device_put, vmap
+
 
 ###############################################################################
 # Segmentation
@@ -131,6 +134,8 @@ def forward(vol, geom, props, src_idx=0):
     Implements the forward monte carlo solver for a given source.
     """
 
+    detectors = geom.get_closest_detectors(src_idx)
+
     cfg = {
         'nphoton': 1000000,
         'vol': vol,
@@ -140,7 +145,7 @@ def forward(vol, geom, props, src_idx=0):
         'srcpos': geom.sources[src_idx],
         'srcdir': geom.directions[src_idx],
         'prop': props,
-        'detpos': geom.detectors,
+        'detpos': detectors,
         'replaydet':-1,
         'issavedet': 1,
         'issrcfrom0': 1,
@@ -209,7 +214,7 @@ def compute_jacobian(res, cfg, geometry, display_jacobian=False, detector_idx=No
 
     if display_jacobian:
         if detector_idx is None: detector_idx = 0
-        display_3d(np.squeeze(res2['flux'])[...,detector_idx], geometry)
+        display_3d(np.squeeze(res2['flux'])[..., detector_idx], geometry)
 
     return res2
 
@@ -223,6 +228,68 @@ def transform_points(points, matrix, scaling=1/1.8):
     """
     points = np.hstack([points, np.ones((points.shape[0], 1))])
     return (matrix@points.T).T[:,:3] * scaling
+
+
+def transform_volume_jax(vol, matrix, output_shape, scaling=1/1.8):
+    
+    vol = device_put(vol)
+    matrix = device_put(matrix)
+
+    # Create scaling matrix
+    scaling_matrix = jnp.array([[scaling, 0, 0, 0],
+                               [0, scaling, 0, 0],
+                               [0, 0, scaling, 0],
+                               [0, 0, 0, 1]])
+    
+    # Combine scaling matrix with the transform matrix
+    combined_transform_matrix = jnp.dot(scaling_matrix, matrix)
+    
+    # Generate a grid for the output shape
+    x, y, z = jnp.meshgrid(jnp.arange(output_shape[0]),
+                          jnp.arange(output_shape[1]),
+                          jnp.arange(output_shape[2]), indexing='ij')
+    
+    homogeneous_coordinates = jnp.stack((x, y, z, jnp.ones(output_shape)), axis=-1)
+    inverse_transform = jnp.linalg.inv(combined_transform_matrix)
+    input_coordinates = jnp.einsum('...ij,...j->...i', inverse_transform, homogeneous_coordinates)
+    
+    x_in, y_in, z_in, _ = jnp.split(input_coordinates, 4, axis=-1)
+    
+    # Floor and clip the coordinates
+    x0 = jnp.floor(x_in).astype(int).clip(0, vol.shape[0] - 1)
+    x1 = jnp.clip(x0 + 1, 0, vol.shape[0] - 1)
+    y0 = jnp.floor(y_in).astype(int).clip(0, vol.shape[1] - 1)
+    y1 = jnp.clip(y0 + 1, 0, vol.shape[1] - 1)
+    z0 = jnp.floor(z_in).astype(int).clip(0, vol.shape[2] - 1)
+    z1 = jnp.clip(z0 + 1, 0, vol.shape[2] - 1)
+    
+    # Interpolation weights
+    wa = (x1 - x_in) * (y1 - y_in) * (z1 - z_in)
+    wb = (x1 - x_in) * (y1 - y_in) * (z_in - z0)
+    wc = (x1 - x_in) * (y_in - y0) * (z1 - z_in)
+    wd = (x1 - x_in) * (y_in - y0) * (z_in - z0)
+    we = (x_in - x0) * (y1 - y_in) * (z1 - z_in)
+    wf = (x_in - x0) * (y1 - y_in) * (z_in - z0)
+    wg = (x_in - x0) * (y_in - y0) * (z1 - z_in)
+    wh = (x_in - x0) * (y_in - y0) * (z_in - z0)
+    
+    if vol.ndim == 4:
+        vol_out = wa[..., jnp.newaxis] * vol[x0, y0, z0, :] + \
+                    wb[..., jnp.newaxis] * vol[x0, y0, z1, :] + \
+                    wc[..., jnp.newaxis] * vol[x0, y1, z0, :] + \
+                    wd[..., jnp.newaxis] * vol[x0, y1, z1, :] + \
+                    we[..., jnp.newaxis] * vol[x1, y0, z0, :] + \
+                    wf[..., jnp.newaxis] * vol[x1, y0, z1, :] + \
+                    wg[..., jnp.newaxis] * vol[x1, y1, z0, :] + \
+                    wh[..., jnp.newaxis] * vol[x1, y1, z1, :]
+    else:
+        vol_out = jnp.squeeze(wa * vol[x0, y0, z0] + wb * vol[x0, y0, z1] + \
+              wc * vol[x0, y1, z0] + wd * vol[x0, y1, z1] + \
+              we * vol[x1, y0, z0] + wf * vol[x1, y0, z1] + \
+              wg * vol[x1, y1, z0] + wh * vol[x1, y1, z1])
+
+    return vol_out
+
 
 def transform_volume(vol, matrix, output_shape, scaling=1/1.8):
     
@@ -318,25 +385,6 @@ def _boldpercent2optical(bold_change, seg_transformed):
     dabs_690 = 492.2 * hb_change + 71.89 * hbO2_change # (mm^-1) at 690 nm
     dabs_850 = 181.0 * hb_change + 266.9 * hbO2_change # (mm^-1) at 850 nm
 
-    return dabs_690, dabs_850
-
-
-def fmri2optical(fmri, seg_transformed):
-    """
-    fmri: 4D numpy array
-    anat_seg: 3D numpy array
-    media_properties: list of lists, each list contains [mu_a, mu_s, g, n]
-    """
-    fmri_inv = 1 / (fmri + 1e-9)
-    fmri_inv_avg = np.average(fmri_inv, axis=3)
-    fmri_inv_percent = (fmri_inv - fmri_inv_avg[:,:,:,np.newaxis]) / fmri_inv_avg[:,:,:,np.newaxis]
-
-    # clip to +/- 40%
-    # fmri_inv_percent = np.clip(fmri_inv_percent, -0.4, 0.4)
-
-    # plot_bold(seg_transformed, bold_percent[...,0])
-
-    dabs_690, dabs_850 = _boldpercent2optical(fmri_inv_percent, seg_transformed)
     return dabs_690, dabs_850
 
 
