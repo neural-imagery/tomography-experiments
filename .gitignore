@@ -8,3 +8,5 @@ __pycache__
 .vscode
 *.json
 *data/*
+test/
+data_09-20-23/
