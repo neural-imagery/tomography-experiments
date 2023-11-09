@@ -1,4 +1,5 @@
 import numpy as np
+from pmcx import dettime
 
 def add_ball_to_array(array, center_mm, radius_mm, val, grid_resolution_mm=1):
     """
@@ -37,3 +38,20 @@ def add_ball_to_array(array, center_mm, radius_mm, val, grid_resolution_mm=1):
     array[distances <= radius] = val
 
     return array
+
+def get_arrival_times(detp, prop):
+    # Calculate arrival times for all photons
+    all_arrival_times = dettime(detp, prop=prop) # arrival times
+    all_arrival_times = all_arrival_times.flatten()
+
+    # Get unique detector IDs and their indices
+    unique_det_ids, indices = np.unique(detp['detid'], return_inverse=True)
+
+    # Initialize a dictionary to store arrival times by detector
+    arrival_times_by_detector = {det_id: [] for det_id in unique_det_ids}
+
+    # Vectorized segregation of arrival times by detector ID
+    for det_id in unique_det_ids:
+        arrival_times_by_detector[det_id] = all_arrival_times[indices == det_id]
+    
+    return arrival_times_by_detector
