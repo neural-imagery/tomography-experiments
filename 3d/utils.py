@@ -55,3 +55,43 @@ def get_arrival_times(detp, prop):
         arrival_times_by_detector[det_id] = all_arrival_times[indices == det_id]
     
     return arrival_times_by_detector
+
+# based off of get_detector_data in fmri2fnirs/util.py
+def get_cw_data(res: dict, cfg: dict):
+    """
+    Converts the output of pmcx.run() into a (ndetectors,) np.ndarray
+
+    Parameters
+    ----------
+    res : dict
+        output of pmcx.run()
+    cfg : dict
+        configuration dictionary used to run pmcx
+
+    Returns
+    -------
+    data : (ndetectors,) np.ndarray
+    """
+    detp = res['detp']
+    
+    # detp[0] is the detector id, detp[1:nprops] is the path length in each medium
+
+    # For each measurement, we multiply the path length in each medium by the absorption coefficient, and exponentiate
+    # to get the intensity.
+
+    ndetectors = cfg['detpos'].shape[0]
+
+    pathlengths = detp['ppath']
+    absorption_coefficients = np.array(cfg['prop'])[1:, 0] # exclude background
+
+    weights = np.exp(-pathlengths @ absorption_coefficients) #* cfg['unitinmm']) # (nmeas,)
+
+    # Get unique detector IDs and their indices
+    unique_det_ids, indices = np.unique(detp['detid'], return_inverse=True)
+
+    intensities = np.bincount(detp['data'][0].astype('int64'), weights=weights, minlength=(ndetectors+1))[1:] # there is no detector 0
+
+    # Create a dictionary mapping detector IDs to intensities
+    intensities_by_detector = {det_id: intensities[idx] for idx, det_id in enumerate(unique_det_ids)}
+    
+    return intensities_by_detector
