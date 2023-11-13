@@ -57,7 +57,9 @@ def get_arrival_times(detp, prop):
     return arrival_times_by_detector
 
 # based off of get_detector_data in fmri2fnirs/util.py
-def get_cw_data(res: dict, cfg: dict):
+
+
+def old_get_cw_data(res: dict, cfg: dict):
     """
     Converts the output of pmcx.run() into a (ndetectors,) np.ndarray
 
@@ -74,8 +76,6 @@ def get_cw_data(res: dict, cfg: dict):
     """
     detp = res['detp']
     
-    # detp[0] is the detector id, detp[1:nprops] is the path length in each medium
-
     # For each measurement, we multiply the path length in each medium by the absorption coefficient, and exponentiate
     # to get the intensity.
 
@@ -91,7 +91,38 @@ def get_cw_data(res: dict, cfg: dict):
 
     intensities = np.bincount(detp['data'][0].astype('int64'), weights=weights, minlength=(ndetectors+1))[1:] # there is no detector 0
 
-    # Create a dictionary mapping detector IDs to intensities
-    intensities_by_detector = {det_id: intensities[idx] for idx, det_id in enumerate(unique_det_ids)}
+    intensities = intensities / cfg['nphoton'] # normalize by number of photons
+
+    return intensities
+
+def get_cw_data(res: dict, cfg: dict):
+    """
+    Converts the output of pmcx.run() into a (ndetectors,) np.ndarray
+
+    Parameters
+    ----------
+    res : dict
+        output of pmcx.run()
+    cfg : dict
+        configuration dictionary used to run pmcx
+
+    Returns
+    -------
+    data : (ndetectors,) np.ndarray
+    """
+    flux = res['flux']
+    ndetectors = cfg['detpos'].shape[0]
+    detector_positions = cfg['detpos'][:,:3]
+
+    # sample flux at detector positions
+    intensities = np.zeros(ndetectors)
+    for i in range(ndetectors):
+        intensities[i] = flux[detector_positions[i,0], detector_positions[i,1], detector_positions[i,2], 0]
     
-    return intensities_by_detector
+    return intensities
+
+def region_to_mua(region, optical_properties):
+    mua = np.zeros_like(region, dtype=np.float64)
+    for i in range(len(optical_properties)):
+        mua[region == i] = optical_properties[i,0]
+    return mua
