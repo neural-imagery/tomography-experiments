@@ -56,12 +56,41 @@ def get_arrival_times(detp, prop):
     
     return arrival_times_by_detector
 
-# based off of get_detector_data in fmri2fnirs/util.py
+def region_to_mua(region, optical_properties):
+    mua = np.zeros_like(region, dtype=np.float64)
+    for i in range(len(optical_properties)):
+        mua[region == i] = optical_properties[i,0]
+    return mua
 
-
-def old_get_cw_data(res: dict, cfg: dict):
+def detweight(detp, prop):
     """
-    Converts the output of pmcx.run() into a (ndetectors,) np.ndarray
+    Calculates the detector weights for each measurement.
+
+    Parameters
+    ----------
+    detp : numpy.ndarray
+        The detector path information from pmcx.run().
+    prop : numpy.ndarray
+        The optical properties of each medium.
+
+    Returns
+    -------
+    numpy.ndarray
+        The detector weights for each measurement.
+    """
+    # For each measurement, we multiply the path length in each medium by the absorption coefficient, and exponentiate
+    # to get the intensity.
+
+    pathlengths = detp['ppath']
+    absorption_coefficients = np.array(prop)[1:, 0] # exclude background
+
+    weights = np.exp(-pathlengths @ absorption_coefficients) #* cfg['unitinmm']) # (nmeas,)
+
+    return weights
+
+def get_cw_data(res: dict, cfg: dict):
+    """
+    Converts the output of pmcx.mcxlab() into a (ndetectors,) np.ndarray
 
     Parameters
     ----------
@@ -75,54 +104,68 @@ def old_get_cw_data(res: dict, cfg: dict):
     data : (ndetectors,) np.ndarray
     """
     detp = res['detp']
-    
-    # For each measurement, we multiply the path length in each medium by the absorption coefficient, and exponentiate
-    # to get the intensity.
-
     ndetectors = cfg['detpos'].shape[0]
-
-    pathlengths = detp['ppath']
-    absorption_coefficients = np.array(cfg['prop'])[1:, 0] # exclude background
-
-    weights = np.exp(-pathlengths @ absorption_coefficients) #* cfg['unitinmm']) # (nmeas,)
-
-    # Get unique detector IDs and their indices
-    unique_det_ids, indices = np.unique(detp['detid'], return_inverse=True)
+    weights = detweight(detp, cfg['prop'])
 
     intensities = np.bincount(detp['data'][0].astype('int64'), weights=weights, minlength=(ndetectors+1))[1:] # there is no detector 0
 
-    intensities = intensities / cfg['nphoton'] # normalize by number of photons
-
     return intensities
 
-def get_cw_data(res: dict, cfg: dict):
+
+def dettime(detp, prop, unitinmm=1):
     """
-    Converts the output of pmcx.run() into a (ndetectors,) np.ndarray
+    Recalculate the detected photon time using partial path data and
+    optical properties (for perturbation Monte Carlo or detector readings).
 
-    Parameters
-    ----------
-    res : dict
-        output of pmcx.run()
-    cfg : dict
-        configuration dictionary used to run pmcx
+    Parameters:
+    detp (dict): The second output from mcxlab. detp must be a dictionary.
+    prop (list): Optical property list, as defined in the cfg.prop field of mcxlab's input.
+    unitinmm (float): Voxel edge-length in mm. If ignored, assume to be 1 (mm).
 
-    Returns
-    -------
-    data : (ndetectors,) np.ndarray
+    Returns:
+    dett (numpy.ndarray): Recalculated detected photon time based on the partial path data and optical property table.
     """
-    flux = res['flux']
-    ndetectors = cfg['detpos'].shape[0]
-    detector_positions = cfg['detpos'][:,:3]
 
-    # sample flux at detector positions
-    intensities = np.zeros(ndetectors)
-    for i in range(ndetectors):
-        intensities[i] = flux[detector_positions[i,0], detector_positions[i,1], detector_positions[i,2], 0]
-    
-    return intensities
+    R_C0 = 3.335640951981520e-12  # inverse of light speed in vacuum
 
-def region_to_mua(region, optical_properties):
-    mua = np.zeros_like(region, dtype=np.float64)
-    for i in range(len(optical_properties)):
-        mua[region == i] = optical_properties[i,0]
-    return mua
+    # Check the number of media
+    medianum = len(prop)
+
+    dett = np.zeros(detp['ppath'].shape[0])
+    for i in range(medianum - 1):
+        refractive_index = prop[i + 1][3]  # refractive index
+        dett += refractive_index * detp['ppath'][:, i] * R_C0 * unitinmm
+    return dett
+
+def get_td(res, prop):
+    """
+    Calculate the time-domain data from the partial path data.
+
+    Parameters:
+    res (dict): The first output from mcxlab. res must be a dictionary.
+    prop (list): Optical property list, as defined in the cfg.prop field of mcxlab's input.
+
+    Returns:
+    td (numpy.ndarray): Time-domain data.
+    """
+
+    # Check the number of media
+    medianum = len(prop)
+
+    # Get the number of detectors
+    detnum = res['detp']['detid'].shape[0]
+
+    # Initialize the time-domain data
+    td = np.zeros((detnum, res['nphoton']))
+
+    # Get the detector weights
+    weights = detweight(res['detp'], prop)
+
+    # Get the arrival times for each detector
+    arrival_times_by_detector = get_arrival_times(res['detp'], prop)
+
+    # Calculate the time-domain data
+    for det_id, arrival_times in arrival_times_by_detector.items():
+        td[det_id, :] = np.histogram(arrival_times, bins=res['nphoton'], weights=weights[det_id])[0]
+
+    return td
