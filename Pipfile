@@ -6,7 +6,7 @@ name = "pypi"
 [packages]
 numpy = "*"
 matplotlib = "*"
-pmcx = "*"
+pmcx = "0.2.6"
 jdata = "*"
 scipy = "*"
 scikit-image = "*"
@@ -19,4 +19,4 @@ nbdime = "*"
 [dev-packages]
 
 [requires]
-python_version = "3.9"
+python_version = "3.10"
