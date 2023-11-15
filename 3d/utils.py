@@ -111,6 +111,38 @@ def get_cw_data(res: dict, cfg: dict):
 
     return intensities
 
+def get_td_data(res: dict, cfg: dict, unitinmm:float=1):
+    """
+    Get time domain data from pmcx.mcxlab() output.
+
+    Parameters
+    ----------
+    res : dict
+        output of pmcx.run()
+    cfg : dict
+        configuration dictionary used to run pmcx
+
+    Returns
+    -------
+    data : (ntimebins, ndetectors) np.ndarray
+    """
+
+    detp = res['detp']
+    ndetectors = cfg['detpos'].shape[0]
+    weights = detweight(detp, cfg['prop'])
+    tof = dettime(detp, cfg['prop'], unitinmm)
+    ntimebins = int((cfg['tend'] - cfg['tstart']) // cfg['tstep'] + 1)
+
+    data = np.zeros((ntimebins, ndetectors))
+
+    for i in range(ndetectors):
+        hist, bin_edges = np.histogram(tof[detp['detid']==i+1], bins=ntimebins, weights=weights[detp['detid']==i+1],
+                                    range=(cfg['tstart'], cfg['tend']))
+        t = bin_edges[:-1]
+        data[:,i] = hist
+
+    return data, t
+
 
 def dettime(detp, prop, unitinmm=1):
     """
@@ -136,36 +168,3 @@ def dettime(detp, prop, unitinmm=1):
         refractive_index = prop[i + 1][3]  # refractive index
         dett += refractive_index * detp['ppath'][:, i] * R_C0 * unitinmm
     return dett
-
-def get_td(res, prop):
-    """
-    Calculate the time-domain data from the partial path data.
-
-    Parameters:
-    res (dict): The first output from mcxlab. res must be a dictionary.
-    prop (list): Optical property list, as defined in the cfg.prop field of mcxlab's input.
-
-    Returns:
-    td (numpy.ndarray): Time-domain data.
-    """
-
-    # Check the number of media
-    medianum = len(prop)
-
-    # Get the number of detectors
-    detnum = res['detp']['detid'].shape[0]
-
-    # Initialize the time-domain data
-    td = np.zeros((detnum, res['nphoton']))
-
-    # Get the detector weights
-    weights = detweight(res['detp'], prop)
-
-    # Get the arrival times for each detector
-    arrival_times_by_detector = get_arrival_times(res['detp'], prop)
-
-    # Calculate the time-domain data
-    for det_id, arrival_times in arrival_times_by_detector.items():
-        td[det_id, :] = np.histogram(arrival_times, bins=res['nphoton'], weights=weights[det_id])[0]
-
-    return td
