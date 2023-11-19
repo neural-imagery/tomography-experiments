@@ -141,7 +141,7 @@ def get_td_data(res: dict, cfg: dict, unitinmm:float=1):
         t = bin_edges[:-1]
         data[:,i] = hist
 
-    return data, t
+    return data
 
 
 def dettime(detp, prop, unitinmm=1):
@@ -181,16 +181,13 @@ def invert(dphi, mua_bg, J):
 
     # we want for dmua s.t. J @ dmua = dphi
 
-    nz, ny, nx, nt, ndetectors = J.shape
+    nz, ny, nx, nt, ndetectors, nsources = J.shape
 
     # Reshape J to 2D matrix for matrix operation
-    J_reshaped = J.reshape((nz * ny * nx, nt * ndetectors)).T
+    J_reshaped = J.reshape((nz * ny * nx, nt * ndetectors * nsources)).T
 
     # Flatten dphi to a 1D vector
     dphi_flattened = dphi.flatten()
-
-    # Flip sign of jacobian (since dphi = -J @ dmua)
-    J_reshaped = -J_reshaped
 
     # Use JAX for the least-squares solution
     dmua, residuals, rank, s = jnp.linalg.lstsq(J_reshaped, dphi_flattened, rcond=None)
