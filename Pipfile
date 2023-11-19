@@ -3,6 +3,11 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 name = "pypi"
 
+[[source]]
+name = "jax-cuda-releases"
+url = "https://storage.googleapis.com/jax-releases/jax_cuda_releases.html"
+verify_ssl = true
+
 [packages]
 numpy = "*"
 matplotlib = "*"
@@ -15,6 +20,8 @@ jupyter = "*"
 plotly = "*"
 scikit-learn = "*"
 nbdime = "*"
+jaxlib = "0.4.6"
+jax = {extras = ["cuda11_pip"], version = "0.4.6"}
 
 [dev-packages]
 

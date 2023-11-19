@@ -168,3 +168,34 @@ def dettime(detp, prop, unitinmm=1):
         refractive_index = prop[i + 1][3]  # refractive index
         dett += refractive_index * detp['ppath'][:, i] * R_C0 * unitinmm
     return dett
+
+
+import jax.numpy as jnp
+from jax import jit
+
+@jit
+def invert(dphi, mua_bg, J):
+     # J has shape (nz, ny, nx, nt, ndetectors)
+    # mua_bg has shape (nz, ny, nx)
+    # dphi has shape (ndetectors, nt)
+
+    # we want for dmua s.t. J @ dmua = dphi
+
+    nz, ny, nx, nt, ndetectors = J.shape
+
+    # Reshape J to 2D matrix for matrix operation
+    J_reshaped = J.reshape((nz * ny * nx, nt * ndetectors)).T
+
+    # Flatten dphi to a 1D vector
+    dphi_flattened = dphi.flatten()
+
+    # Flip sign of jacobian (since dphi = -J @ dmua)
+    J_reshaped = -J_reshaped
+
+    # Use JAX for the least-squares solution
+    dmua, residuals, rank, s = jnp.linalg.lstsq(J_reshaped, dphi_flattened, rcond=None)
+
+    # Reshape dmua back to the original dimensions
+    dmua_reshaped = dmua.reshape((nz, ny, nx))
+
+    return dmua_reshaped
