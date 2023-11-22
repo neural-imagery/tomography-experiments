@@ -83,6 +83,27 @@ class Solver:
         return data
 
 
+def compute_dphi(data_bg, data_true):
+    """
+    Compute the normalized difference in time domain data between the background and true data.
+
+    Parameters
+    ----------
+    data_bg : numpy.ndarray
+        The time domain data for the background medium.
+    data_true : numpy.ndarray
+        The time domain data for the true medium.
+
+    Returns
+    -------
+    numpy.ndarray
+        The difference in time domain data between the background and true data.
+    """
+    cw_data_bg = np.sum(data_bg, axis=0)[np.newaxis, :]
+    dphi = (data_true - data_bg) / cw_data_bg
+    return dphi
+
+
 @jit
 def invert(dphi, J):
     # J has shape (nz, ny, nx, nt, ndetectors)
