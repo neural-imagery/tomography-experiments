@@ -5,6 +5,7 @@ import numpy as np
 import jax.numpy as jnp
 from jax import jit
 
+MAX_PHOTONS_PER_RUN = 1e5
 
 class Solver:
     def __init__(
@@ -17,32 +18,44 @@ class Solver:
         self.tstep = tstep
         self.nt = int((tend - tstart) / tstep)
 
-    def forward(self, src_idx, nphoton=1e8, random_seed=1):
+    def forward(self, src_idx, nphoton=1e7, random_seed=1):
         """
         Implements the forward monte carlo solver.
         """
 
-        config = {
-            "seed": random_seed,
-            "nphoton": nphoton,
-            "vol": self.medium.volume,
-            "tstart": self.tstart,
-            "tend": self.tend,
-            "tstep": self.tstep,
-            "srcpos": self.sensors.src_pos[src_idx],
-            "srcdir": self.sensors.src_dirs[src_idx],
-            "prop": self.medium.optical_properties,
-            "detpos": self.sensors.det_pos,
-            "replaydet": -1,
-            "issavedet": 1,
-            "issrcfrom0": 1,
-            "issaveseed": 1,
-            # 'unitinmm': 1.8,
-            'maxdetphoton': nphoton,
-        }
+        nphotons_left = nphoton
 
-        result = pmcx.mcxlab(config)
-        return result, config
+        out = []
+
+        while nphotons_left > 0:
+            nphotons_on_run = min(nphotons_left, MAX_PHOTONS_PER_RUN)
+            config = {
+                "seed": random_seed,
+                "nphoton": nphotons_on_run,
+                "vol": self.medium.volume,
+                "tstart": self.tstart,
+                "tend": self.tend,
+                "tstep": self.tstep,
+                "srcpos": self.sensors.src_pos[src_idx],
+                "srcdir": self.sensors.src_dirs[src_idx],
+                "prop": self.medium.optical_properties,
+                "detpos": self.sensors.det_pos,
+                "replaydet": -1,
+                "issavedet": 1,
+                "issrcfrom0": 1,
+                "issaveseed": 1,
+                # 'unitinmm': 1.8,
+                'maxdetphoton': 1e8,
+            }
+
+            result = pmcx.mcxlab(config)
+
+            nphotons_left -= nphotons_on_run
+            random_seed += 1
+
+            out.append((result, config))
+
+        return out
 
     def get_td_data(self, res: dict, optical_properties: np.ndarray = None):
         """
