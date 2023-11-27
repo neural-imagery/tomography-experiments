@@ -31,12 +31,12 @@ def two_balls_2d_medium(
         The 2D medium with two balls of different optical properties.
     """
     nz = 1
-    ny = voxels_per_dim
+    ny = voxels_per_dim // 2
     nx = voxels_per_dim
     medium = Medium((nz, ny, nx))
 
     # head
-    medium.add_ball((nz // 2, ny // 2, nx // 2), r_head_mm, 1)
+    medium.add_ball((nz // 2, ny, nx // 2), r_head_mm, 1)
 
     # add balls
     medium.add_ball(
@@ -63,7 +63,7 @@ def two_balls_2d_medium(
         [[0, 0, 1, 1],
          [mua0, mus0, g, refr_index],
          [mua1, mus0, g, refr_index]])
-    
+
     medium_bg.optical_properties = np.array([
         [0, 0, 1, 1],
         [mua0, mus0, g, refr_index],
@@ -102,7 +102,7 @@ def two_balls_2d_sensors(noptodes: int, medium: Medium):
     # Calculate sensor and source positions
     scaling_factor = 1
 
-    center_point = np.array([medium.ny // 2, medium.nx // 2])
+    center_point = np.array([0, medium.nx // 2])
     det_pos = (
         scaling_factor
         * r_head_mm
@@ -114,7 +114,8 @@ def two_balls_2d_sensors(noptodes: int, medium: Medium):
         + center_point
     )
     src_dirs = center_point - src_pos
-    src_dirs = src_dirs / np.linalg.norm(src_dirs, axis=1)[:, None]  # normalize
+    src_dirs = src_dirs / \
+        np.linalg.norm(src_dirs, axis=1)[:, None]  # normalize
 
     # add a column of zeros to cast as 3D
     src_pos = np.hstack((medium.nz // 2 * np.ones((noptodes, 1)), src_pos))
