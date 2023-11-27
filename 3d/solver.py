@@ -17,14 +17,14 @@ class Solver:
         self.tstep = tstep
         self.nt = int((tend - tstart) / tstep)
 
-    def forward(self, src_idx, random_seed=1):
+    def forward(self, src_idx, nphoton=1e8, random_seed=1):
         """
         Implements the forward monte carlo solver.
         """
 
         config = {
             "seed": random_seed,
-            "nphoton": 1e7,
+            "nphoton": nphoton,
             "vol": self.medium.volume,
             "tstart": self.tstart,
             "tend": self.tend,
@@ -38,7 +38,7 @@ class Solver:
             "issrcfrom0": 1,
             "issaveseed": 1,
             # 'unitinmm': 1.8,
-            # 'maxdetphoton': 1e10,
+            'maxdetphoton': nphoton,
         }
 
         result = pmcx.mcxlab(config)
