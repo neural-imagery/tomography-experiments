@@ -21,7 +21,6 @@ plotly = "*"
 scikit-learn = "*"
 nbdime = "*"
 jaxlib = "0.4.6"
-jax = {extras = ["cuda11_pip"], version = "0.4.6"}
 
 [dev-packages]
 
