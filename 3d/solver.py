@@ -5,7 +5,8 @@ import numpy as np
 import jax.numpy as jnp
 from jax import jit
 
-MAX_PHOTONS_PER_RUN = 1e5
+MAX_PHOTONS_PER_RUN = 1e8
+
 
 class Solver:
     def __init__(
@@ -134,7 +135,8 @@ def invert(dphi, J):
     dphi_flattened = dphi.flatten()
 
     # Use JAX for the least-squares solution
-    dmua, residuals, rank, s = jnp.linalg.lstsq(J_reshaped, dphi_flattened, rcond=None)
+    dmua, residuals, rank, s = jnp.linalg.lstsq(
+        J_reshaped, dphi_flattened, rcond=None)
 
     # Reshape dmua back to the original dimensions
     dmua_reshaped = dmua.reshape((nz, ny, nx))
@@ -143,6 +145,7 @@ def invert(dphi, J):
 
 
 def jacobian(forward_result, cfg):
+    print("Computing Jacobian...")
     # one must define cfg['seed'] using the returned seeds
     cfg["seed"] = forward_result["seeds"]
 
