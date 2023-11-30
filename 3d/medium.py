@@ -4,7 +4,7 @@ from sensor_geometry import SensorGeometry
 
 
 class Medium:
-    def __init__(self, shape, grid_resolution_mm=1.0):
+    def __init__(self, shape, grid_resolution_mm=1.0, metadata=""):
         self.shape = shape
         self.nz = shape[0]
         self.ny = shape[1]
@@ -12,6 +12,7 @@ class Medium:
         self.volume = np.zeros(shape)
         self.grid_resolution_mm = grid_resolution_mm
         self.optical_properties = np.array([[0, 0, 1, 1]])
+        self.metadata = metadata  # for printing
 
     def add_ball(self, center_mm, radius_mm, val):
         """
@@ -37,7 +38,8 @@ class Medium:
         radius = radius_mm / self.grid_resolution_mm
 
         # Create a meshgrid for the array dimensions
-        x, y, z = np.ogrid[0 : self.shape[0], 0 : self.shape[1], 0 : self.shape[2]]
+        x, y, z = np.ogrid[0: self.shape[0],
+                           0: self.shape[1], 0: self.shape[2]]
 
         # Calculate the Euclidean distance from each point in the meshgrid to the center
         distances = np.sqrt(
