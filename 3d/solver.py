@@ -23,40 +23,28 @@ class Solver:
         """
         Implements the forward monte carlo solver.
         """
+        config = {
+            "seed": random_seed,
+            "nphoton": nphoton,
+            "vol": self.medium.volume,
+            "tstart": self.tstart,
+            "tend": self.tend,
+            "tstep": self.tstep,
+            "srcpos": self.sensors.src_pos[src_idx],
+            "srcdir": self.sensors.src_dirs[src_idx],
+            "prop": self.medium.optical_properties,
+            "detpos": self.sensors.det_pos,
+            "replaydet": -1,
+            "issavedet": 1,
+            "issrcfrom0": 1,
+            "issaveseed": 1,
+            # 'unitinmm': 1.8,
+            'maxdetphoton': 1e8,
+        }
 
-        nphotons_left = nphoton
+        result = pmcx.mcxlab(config)
 
-        out = []
-
-        while nphotons_left > 0:
-            nphotons_on_run = min(nphotons_left, MAX_PHOTONS_PER_RUN)
-            config = {
-                "seed": random_seed,
-                "nphoton": nphotons_on_run,
-                "vol": self.medium.volume,
-                "tstart": self.tstart,
-                "tend": self.tend,
-                "tstep": self.tstep,
-                "srcpos": self.sensors.src_pos[src_idx],
-                "srcdir": self.sensors.src_dirs[src_idx],
-                "prop": self.medium.optical_properties,
-                "detpos": self.sensors.det_pos,
-                "replaydet": -1,
-                "issavedet": 1,
-                "issrcfrom0": 1,
-                "issaveseed": 1,
-                # 'unitinmm': 1.8,
-                'maxdetphoton': 1e8,
-            }
-
-            result = pmcx.mcxlab(config)
-
-            nphotons_left -= nphotons_on_run
-            random_seed += 1
-
-            out.append((result, config))
-
-        return out
+        return result, config
 
     def get_td_data(self, res: dict, optical_properties: np.ndarray = None):
         """
