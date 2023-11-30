@@ -40,10 +40,10 @@ def two_balls_2d_medium(
 
     # add balls
     medium.add_ball(
-        (nz // 2, depth_mm, nx // 2 - np.floor(ball_separation_mm)), r_ball_mm, 2
+        (nz // 2, depth_mm, nx // 2 - np.floor(ball_separation_mm/2)), r_ball_mm, 2
     )
     medium.add_ball(
-        (nz // 2, depth_mm, nx // 2 + np.ceil(ball_separation_mm)), r_ball_mm, 2
+        (nz // 2, depth_mm, nx // 2 + np.ceil(ball_separation_mm/2)), r_ball_mm, 2
     )
 
     # set optical properties
