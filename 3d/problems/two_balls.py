@@ -33,7 +33,8 @@ def two_balls_2d_medium(
     nz = 1
     ny = voxels_per_dim // 2
     nx = voxels_per_dim
-    medium = Medium((nz, ny, nx))
+    medium = Medium(
+        (nz, ny, nx), metadata=f"contrast={contrast}_separation={ball_separation_mm}_radius={r_ball_mm}_depth={depth_mm}")
 
     # head
     medium.add_ball((nz // 2, ny, nx // 2), r_head_mm, 1)
