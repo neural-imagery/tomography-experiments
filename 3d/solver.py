@@ -39,7 +39,7 @@ class Solver:
             "issrcfrom0": 1,
             "issaveseed": 1,
             # 'unitinmm': 1.8,
-            'maxdetphoton': 1e8,
+            'maxdetphoton': nphoton,
         }
 
         result = pmcx.mcxlab(config)
