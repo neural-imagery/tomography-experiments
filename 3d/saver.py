@@ -7,7 +7,7 @@ class Saver:
     def __init__(self, experiment_name, params):
         params_str = "_".join(
             [f"{k}={format(v, '.0e') if v > 1e3 else v}" for k, v in params.items()])
-        params_folder = f"{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{params_str}"
+        params_folder = f"{datetime.datetime.now().strftime('%Y-%m-%d')}_{params_str}"
         self.path = f"data/{experiment_name}/{params_folder}"
 
         # create the data/experiment_name folder if it doesn't exist
