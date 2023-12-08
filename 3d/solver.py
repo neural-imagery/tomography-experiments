@@ -129,7 +129,7 @@ def invert(dphi: np.array, J: np.array, regularization=None, alpha=1e-4):
         error = residuals[0]
     elif regularization == 'TV':
         dmua, error = least_squares_tv(
-            J_reshaped, dphi_flattened, lambda_tv=0.1, max_iter=1000, learning_rate=0.01)
+            J, dphi, lambda_tv=0.1, max_iter=1000, learning_rate=0.01)
     elif regularization == 'ridge':
         dmua, error = ridge_regression(
             J_reshaped, dphi_flattened, alpha_frac=alpha)
@@ -169,24 +169,38 @@ def ridge_regression(A, y, alpha_frac=1e-4):
 @jit
 def total_variation(x):
     """Compute the total variation of x."""
-    return jnp.sum(jnp.abs(jnp.diff(x)))
+    # return jnp.sum(jnp.abs(jnp.diff(x)))
+    return jnp.sum(jnp.abs(x[1:, :, :] - x[:-1, :, :])) + \
+        jnp.sum(jnp.abs(x[:, 1:, :] - x[:, :-1, :])) + \
+        jnp.sum(jnp.abs(x[:, :, 1:] - x[:, :, :-1]))
 
 
 @jit
-def loss_fn(x, A, b, lambda_tv):
-    """Compute the loss function (least squares + TV regularization)."""
-    return jnp.sum((jnp.dot(A, x) - b) ** 2) + lambda_tv * total_variation(x)
+def loss_fn(x, A, b, lambda_tv, lambda_l2):
+    """
+    Compute the loss function (least squares + TV regularization).
+    """
+    Ax = jnp.tensordot(A, x, axes=([0, 1, 2], [0, 1, 2]))
+    return jnp.sum((Ax - b) ** 2) + lambda_tv * total_variation(x) + lambda_l2 * jnp.sum(x ** 2)
+
+
+def error_fn(x, A, b):
+    """
+    Compute the least squares error.
+    """
+    Ax = jnp.tensordot(A, x, axes=([0, 1, 2], [0, 1, 2]))
+    return jnp.sum((Ax - b) ** 2)
 
 # @jit
 
 
-def least_squares_tv(A, b, lambda_tv, max_iter=1000, learning_rate=0.01):
+def least_squares(A, b, lambda_tv=0.1, lambda_l2=1, max_iter=1000, learning_rate=0.01):
     """
     Solves the least squares problem with TV regularization using gradient descent.
 
     Args:
-    A (array): Matrix in the linear system Ax = b.
-    b (array): Vector in the linear system Ax = b.
+    A (array): Matrix in the linear system Ax = b. Shape: (nz, ny, nx, nt, ndetectors, nsources)
+    b (array): Vector in the linear system Ax = b. Shape: (ndetectors, nt)
     lambda_tv (float): Regularization parameter for the TV term.
     max_iter (int): Maximum number of iterations for the optimization.
     learning_rate (float): Learning rate for the optimizer.
@@ -194,11 +208,13 @@ def least_squares_tv(A, b, lambda_tv, max_iter=1000, learning_rate=0.01):
     Returns:
     x (array): Solution to the regularized least squares problem.
     """
+    nz, ny, nx, nt, ndetectors, nsources = A.shape
+
     A = device_put(A)
     b = device_put(b)
 
     # Initial guess
-    x = jnp.zeros(A.shape[1])
+    x = jnp.zeros((nz, ny, nx))
 
     # Gradient of the loss function
     grad_loss = grad(loss_fn)
@@ -208,14 +224,20 @@ def least_squares_tv(A, b, lambda_tv, max_iter=1000, learning_rate=0.01):
     opt_state = optimizer.init(x)
 
     # Optimization loop
+    errors = []
+    errors.append(loss_fn(x, A, b, lambda_tv, lambda_l2))
     for i in range(max_iter):
-        grads = grad_loss(x, A, b, lambda_tv)
+        grads = grad_loss(x, A, b, lambda_tv, lambda_l2)
         updates, opt_state = optimizer.update(grads, opt_state)
         x = optax.apply_updates(x, updates)
 
-    error = jnp.sum((jnp.dot(A, x) - b) ** 2)  # just the least squares term
+        # Compute the error
+        error = loss_fn(x, A, b, lambda_tv, lambda_l2)
+        errors.append(error)
 
-    return x, error
+    print(f"Error: {errors[-1]:.2e}")
+
+    return x, errors
 
 
 def jacobian(forward_result, cfg):
