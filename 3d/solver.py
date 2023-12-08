@@ -3,9 +3,10 @@ from sensor_geometry import SensorGeometry
 import pmcx
 import numpy as np
 import jax.numpy as jnp
-from jax import jit
-
-MAX_PHOTONS_PER_RUN = 1e8
+from jax import jit, grad
+import optax
+# use sklearn ridge regression to solve the problem
+from sklearn.linear_model import Ridge
 
 
 class Solver:
@@ -106,8 +107,8 @@ def compute_dphi(data_bg, data_true):
     return dphi
 
 
-@jit
-def invert(dphi, J):
+# @jit
+def invert(dphi: np.array, J: np.array, regularization=None, alpha=1e-3):
     # J has shape (nz, ny, nx, nt, ndetectors)
     # mua_bg has shape (nz, ny, nx)
     # dphi has shape (ndetectors, nt)
@@ -122,14 +123,83 @@ def invert(dphi, J):
     # Flatten dphi to a 1D vector
     dphi_flattened = dphi.flatten()
 
-    # Use JAX for the least-squares solution
-    dmua, residuals, rank, s = jnp.linalg.lstsq(
-        J_reshaped, dphi_flattened, rcond=None)
+    if regularization is None:
+        # Use JAX for the least-squares solution
+        dmua, residuals, rank, s = jnp.linalg.lstsq(
+            J_reshaped, dphi_flattened, rcond=None)
+        error = residuals[0]
+    elif regularization == 'TV':
+        dmua, error = least_squares_tv(
+            J_reshaped, dphi_flattened, lambda_tv=0.1, max_iter=1000, learning_rate=0.01)
+    elif regularization == 'ridge':
+        dmua, error = ridge_regression(J_reshaped, dphi_flattened, alpha)
 
     # Reshape dmua back to the original dimensions
     dmua_reshaped = dmua.reshape((nz, ny, nx))
 
+    # print in scientific notation
+    print(f"Inversion error: {error:.2e}")
+
     return dmua_reshaped
+
+
+def ridge_regression(J_reshaped, dphi_flattened, alpha=1e-3):
+    ridge = Ridge(alpha=alpha, fit_intercept=False)
+    ridge.fit(J_reshaped, dphi_flattened)
+    dmua = ridge.coef_
+    error = np.sum((J_reshaped @ dmua - dphi_flattened) ** 2)
+    return dmua, error
+
+
+@jit
+def total_variation(x):
+    """Compute the total variation of x."""
+    return jnp.sum(jnp.abs(jnp.diff(x)))
+
+
+@jit
+def loss_fn(x, A, b, lambda_tv):
+    """Compute the loss function (least squares + TV regularization)."""
+    return jnp.sum((jnp.dot(A, x) - b) ** 2) + lambda_tv * total_variation(x)
+
+# @jit
+
+
+def least_squares_tv(A, b, lambda_tv, max_iter=1000, learning_rate=0.01):
+    """
+    Solves the least squares problem with TV regularization using gradient descent.
+
+    Args:
+    A (array): Matrix in the linear system Ax = b.
+    b (array): Vector in the linear system Ax = b.
+    lambda_tv (float): Regularization parameter for the TV term.
+    max_iter (int): Maximum number of iterations for the optimization.
+    learning_rate (float): Learning rate for the optimizer.
+
+    Returns:
+    x (array): Solution to the regularized least squares problem.
+    """
+
+    # Initial guess
+    x = jnp.zeros(A.shape[1])
+
+    # Gradient of the loss function
+    grad_loss = grad(loss_fn)
+
+    # Setup the optimizer
+    optimizer = optax.adam(learning_rate)
+    opt_state = optimizer.init(x)
+
+    # Optimization loop
+    for i in range(max_iter):
+        print(f"Iteration {i+1}/{max_iter}")
+        grads = grad_loss(x, A, b, lambda_tv)
+        updates, opt_state = optimizer.update(grads, opt_state)
+        x = optax.apply_updates(x, updates)
+
+    error = jnp.sum((jnp.dot(A, x) - b) ** 2)  # just the least squares term
+
+    return x, error
 
 
 def jacobian(forward_result, cfg):
