@@ -20,7 +20,6 @@ jupyter = "*"
 plotly = "*"
 scikit-learn = "*"
 nbdime = "*"
-jaxlib = "0.4.6"
 
 [dev-packages]
 
