@@ -3,7 +3,7 @@ from sensor_geometry import SensorGeometry
 import pmcx
 import numpy as np
 import jax.numpy as jnp
-from jax import jit, grad
+from jax import jit, grad, device_put, device_get
 import optax
 # use sklearn ridge regression to solve the problem
 from sklearn.linear_model import Ridge
@@ -179,6 +179,8 @@ def least_squares_tv(A, b, lambda_tv, max_iter=1000, learning_rate=0.01):
     Returns:
     x (array): Solution to the regularized least squares problem.
     """
+    A = device_put(A)
+    b = device_put(b)
 
     # Initial guess
     x = jnp.zeros(A.shape[1])
