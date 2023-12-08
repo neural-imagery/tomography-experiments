@@ -3,10 +3,9 @@ from sensor_geometry import SensorGeometry
 import pmcx
 import numpy as np
 import jax.numpy as jnp
-from jax import jit, grad, device_put, device_get
+from jax import jit, grad, device_put
 import optax
-# use sklearn ridge regression to solve the problem
-from sklearn.linear_model import Ridge
+from jax.numpy.linalg import eigvalsh
 
 
 class Solver:
@@ -108,7 +107,7 @@ def compute_dphi(data_bg, data_true):
 
 
 # @jit
-def invert(dphi: np.array, J: np.array, regularization=None, alpha=1e-3):
+def invert(dphi: np.array, J: np.array, regularization=None, alpha=1e-4):
     # J has shape (nz, ny, nx, nt, ndetectors)
     # mua_bg has shape (nz, ny, nx)
     # dphi has shape (ndetectors, nt)
@@ -132,7 +131,8 @@ def invert(dphi: np.array, J: np.array, regularization=None, alpha=1e-3):
         dmua, error = least_squares_tv(
             J_reshaped, dphi_flattened, lambda_tv=0.1, max_iter=1000, learning_rate=0.01)
     elif regularization == 'ridge':
-        dmua, error = ridge_regression(J_reshaped, dphi_flattened, alpha)
+        dmua, error = ridge_regression(
+            J_reshaped, dphi_flattened, alpha_frac=alpha)
 
     # Reshape dmua back to the original dimensions
     dmua_reshaped = dmua.reshape((nz, ny, nx))
@@ -143,12 +143,27 @@ def invert(dphi: np.array, J: np.array, regularization=None, alpha=1e-3):
     return dmua_reshaped
 
 
-def ridge_regression(J_reshaped, dphi_flattened, alpha=1e-3):
-    ridge = Ridge(alpha=alpha, fit_intercept=False)
-    ridge.fit(J_reshaped, dphi_flattened)
-    dmua = ridge.coef_
-    error = np.sum((J_reshaped @ dmua - dphi_flattened) ** 2)
-    return dmua, error
+def ridge_regression(A, y, alpha_frac=1e-4):
+    # Transfer data to GPU
+    A = device_put(A)
+    y = device_put(y)
+
+    # Compute AA^T and its maximum eigenvalue
+    ATA = A.T @ A
+    eigenvalues = eigvalsh(ATA)
+    max_eigenvalue = jnp.max(eigenvalues)
+
+    # Calculate alpha
+    alpha = alpha_frac * max_eigenvalue
+
+    # Compute ridge regression coefficients
+    I = jnp.eye(A.shape[1])
+    beta = jnp.linalg.inv(ATA + alpha * I) @ A.T @ y
+
+    # Compute the error
+    error = jnp.sum((A @ beta - y) ** 2)
+
+    return beta, error
 
 
 @jit
@@ -194,7 +209,6 @@ def least_squares_tv(A, b, lambda_tv, max_iter=1000, learning_rate=0.01):
 
     # Optimization loop
     for i in range(max_iter):
-        print(f"Iteration {i+1}/{max_iter}")
         grads = grad_loss(x, A, b, lambda_tv)
         updates, opt_state = optimizer.update(grads, opt_state)
         x = optax.apply_updates(x, updates)
