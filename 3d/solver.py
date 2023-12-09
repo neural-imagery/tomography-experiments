@@ -176,12 +176,12 @@ def total_variation(x):
 
 
 @jit
-def loss_fn(x, A, b, lambda_tv, lambda_l2):
+def loss_fn(x, A, b, lambda_tv, lambda_l1, lambda_l2):
     """
     Compute the loss function (least squares + TV regularization).
     """
     Ax = jnp.tensordot(A, x, axes=([0, 1, 2], [0, 1, 2]))
-    return jnp.sum((Ax - b) ** 2) + lambda_tv * total_variation(x) + lambda_l2 * jnp.sum(x ** 2)
+    return jnp.sum((Ax - b) ** 2) + lambda_tv * total_variation(x) + lambda_l2 * jnp.sum(x ** 2) + lambda_l1 * jnp.sum(jnp.abs(x))
 
 
 def error_fn(x, A, b):
@@ -194,7 +194,7 @@ def error_fn(x, A, b):
 # @jit
 
 
-def least_squares(A, b, lambda_tv=0.1, lambda_l2=1, max_iter=1000, learning_rate=0.01):
+def least_squares(A, b, lambda_tv=0.1, max_iter=1000, learning_rate=0.01, lambda_l2=1, lambda_l1=1):
     """
     Solves the least squares problem with TV regularization using gradient descent.
 
@@ -225,14 +225,14 @@ def least_squares(A, b, lambda_tv=0.1, lambda_l2=1, max_iter=1000, learning_rate
 
     # Optimization loop
     errors = []
-    errors.append(loss_fn(x, A, b, lambda_tv, lambda_l2))
+    errors.append(loss_fn(x, A, b, lambda_tv, lambda_l1, lambda_l2))
     for i in range(max_iter):
-        grads = grad_loss(x, A, b, lambda_tv, lambda_l2)
+        grads = grad_loss(x, A, b, lambda_tv, lambda_l1, lambda_l2)
         updates, opt_state = optimizer.update(grads, opt_state)
         x = optax.apply_updates(x, updates)
 
         # Compute the error
-        error = loss_fn(x, A, b, lambda_tv, lambda_l2)
+        error = loss_fn(x, A, b, lambda_tv, lambda_l1, lambda_l2)
         errors.append(error)
 
     print(f"Error: {errors[-1]:.2e}")
