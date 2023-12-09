@@ -141,13 +141,13 @@ def total_variation(x):
 
 
 @jit
-def loss_fn(x, A, b, lambda_tv, lambda_l1, lambda_l2):
+def loss_fn(x, A, b, weights, lambda_tv, lambda_l1, lambda_l2):
     """
     Compute the loss function (least squares + TV regularization).
     """
     Ax = jnp.tensordot(A, x, axes=([0, 1, 2], [0, 1, 2]))
     return (
-        jnp.sum((Ax - b) ** 2)
+        jnp.sum(weights * (Ax - b) ** 2)
         + lambda_tv * total_variation(x)
         + lambda_l2 * jnp.sum(x**2)
         + lambda_l1 * jnp.sum(jnp.abs(x))
@@ -206,9 +206,19 @@ def reshape_and_sum(A, grouping_size):
     return A_summed
 
 
+def get_weights(data_bg):
+    """
+    Get the weights for the least squares problem. We trust the data with more photons more.
+
+    We assume poisson noise, so the weights (1/sigma^2) are the background data
+    """
+    return data_bg
+
+
 def invert(
     J,
     dphi,
+    data_bg,
     lambda_tv=0.1,
     max_iter=1000,
     learning_rate=0.01,
@@ -219,25 +229,40 @@ def invert(
     """
     Solves the least squares problem with TV regularization using gradient descent.
 
-    Args:
-    J (array): Jacobian matrix. Shape: (nz, ny, nx, nt, ndetectors, nsources)
-    dphi (array): Normalized difference between starting and observed data. Shape: (nt, ndetectors)
-    lambda_tv (float): Regularization parameter for the TV term.
-    max_iter (int): Maximum number of iterations for the optimization.
-    learning_rate (float): Learning rate for the optimizer.
-    lambda_l2 (float): Regularization parameter for the L2 term.
-    lambda_l1 (float): Regularization parameter for the L1 term.
+    Parameters:
+    ----------
+    J : array
+        Jacobian matrix. Shape: (nz, ny, nx, nt, ndetectors, nsources)
+    dphi : array
+        Normalized difference between starting and observed data. Shape: (nt, ndetectors)
+    data_bg : array
+        Background data. Shape: (nt, ndetectors, nsources)
+
+    Optional Parameters:
+    -------------------
+    lambda_tv : float
+        Regularization parameter for the TV term.
+    max_iter : int
+        Maximum number of iterations for the optimization.
+    learning_rate : float
+        Learning rate for the optimizer.
+    lambda_l2 : float
+        Regularization parameter for the L2 term.
+    lambda_l1 : float
+        Regularization parameter for the L1 term.
 
     Returns:
-    x (array): Solution to the regularized least squares problem.
+    x : array
+        Solution to the regularized least squares problem.
     """
     # sum the data over voxel_grouping_size voxels
-    J = reshape_and_sum(J, voxel_grouping_size)
+    # J = reshape_and_sum(J, voxel_grouping_size)
 
     nz, ny, nx, nt, ndetectors, nsources = J.shape
 
     J = device_put(J)
     dphi = device_put(dphi)
+    weights = get_weights(data_bg)
 
     # Initial guess
     x = jnp.zeros((nz, ny, nx))
@@ -251,14 +276,14 @@ def invert(
 
     # Optimization loop
     errors = []
-    errors.append(loss_fn(x, J, dphi, lambda_tv, lambda_l1, lambda_l2))
+    errors.append(loss_fn(x, J, dphi, weights, lambda_tv, lambda_l1, lambda_l2))
     for _ in range(max_iter):
-        grads = grad_loss(x, J, dphi, lambda_tv, lambda_l1, lambda_l2)
+        grads = grad_loss(x, J, dphi, weights, lambda_tv, lambda_l1, lambda_l2)
         updates, opt_state = optimizer.update(grads, opt_state)
         x = optax.apply_updates(x, updates)
 
         # Compute the error
-        error = loss_fn(x, J, dphi, lambda_tv, lambda_l1, lambda_l2)
+        error = loss_fn(x, J, dphi, weights, lambda_tv, lambda_l1, lambda_l2)
         errors.append(error)
 
     print(f"Error: {errors[-1]:.2e}")
