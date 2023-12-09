@@ -39,7 +39,7 @@ class Solver:
             "issrcfrom0": 1,
             "issaveseed": 1,
             # 'unitinmm': 1.8,
-            'maxdetphoton': nphoton,
+            "maxdetphoton": nphoton,
         }
 
         result = pmcx.mcxlab(config)
@@ -125,14 +125,15 @@ def invert(dphi: np.array, J: np.array, regularization=None, alpha=1e-4):
     if regularization is None:
         # Use JAX for the least-squares solution
         dmua, residuals, rank, s = jnp.linalg.lstsq(
-            J_reshaped, dphi_flattened, rcond=None)
+            J_reshaped, dphi_flattened, rcond=None
+        )
         error = residuals[0]
-    elif regularization == 'TV':
+    elif regularization == "TV":
         dmua, error = least_squares_tv(
-            J, dphi, lambda_tv=0.1, max_iter=1000, learning_rate=0.01)
-    elif regularization == 'ridge':
-        dmua, error = ridge_regression(
-            J_reshaped, dphi_flattened, alpha_frac=alpha)
+            J, dphi, lambda_tv=0.1, max_iter=1000, learning_rate=0.01
+        )
+    elif regularization == "ridge":
+        dmua, error = ridge_regression(J_reshaped, dphi_flattened, alpha_frac=alpha)
 
     # Reshape dmua back to the original dimensions
     dmua_reshaped = dmua.reshape((nz, ny, nx))
@@ -170,9 +171,11 @@ def ridge_regression(A, y, alpha_frac=1e-4):
 def total_variation(x):
     """Compute the total variation of x."""
     # return jnp.sum(jnp.abs(jnp.diff(x)))
-    return jnp.sum(jnp.abs(x[1:, :, :] - x[:-1, :, :])) + \
-        jnp.sum(jnp.abs(x[:, 1:, :] - x[:, :-1, :])) + \
-        jnp.sum(jnp.abs(x[:, :, 1:] - x[:, :, :-1]))
+    return (
+        jnp.sum(jnp.abs(x[1:, :, :] - x[:-1, :, :]))
+        + jnp.sum(jnp.abs(x[:, 1:, :] - x[:, :-1, :]))
+        + jnp.sum(jnp.abs(x[:, :, 1:] - x[:, :, :-1]))
+    )
 
 
 @jit
@@ -181,7 +184,12 @@ def loss_fn(x, A, b, lambda_tv, lambda_l1, lambda_l2):
     Compute the loss function (least squares + TV regularization).
     """
     Ax = jnp.tensordot(A, x, axes=([0, 1, 2], [0, 1, 2]))
-    return jnp.sum((Ax - b) ** 2) + lambda_tv * total_variation(x) + lambda_l2 * jnp.sum(x ** 2) + lambda_l1 * jnp.sum(jnp.abs(x))
+    return (
+        jnp.sum((Ax - b) ** 2)
+        + lambda_tv * total_variation(x)
+        + lambda_l2 * jnp.sum(x**2)
+        + lambda_l1 * jnp.sum(jnp.abs(x))
+    )
 
 
 def error_fn(x, A, b):
@@ -191,10 +199,13 @@ def error_fn(x, A, b):
     Ax = jnp.tensordot(A, x, axes=([0, 1, 2], [0, 1, 2]))
     return jnp.sum((Ax - b) ** 2)
 
+
 # @jit
 
 
-def least_squares(A, b, lambda_tv=0.1, max_iter=1000, learning_rate=0.01, lambda_l2=1, lambda_l1=1):
+def least_squares(
+    A, b, lambda_tv=0.1, max_iter=1000, learning_rate=0.01, lambda_l2=1, lambda_l1=1
+):
     """
     Solves the least squares problem with TV regularization using gradient descent.
 
