@@ -106,44 +106,6 @@ def compute_dphi(data_bg, data_true):
     return dphi
 
 
-# @jit
-def invert(dphi: np.array, J: np.array, regularization=None, alpha=1e-4):
-    # J has shape (nz, ny, nx, nt, ndetectors)
-    # mua_bg has shape (nz, ny, nx)
-    # dphi has shape (ndetectors, nt)
-
-    # we want for dmua s.t. J @ dmua = dphi
-
-    nz, ny, nx, nt, ndetectors, nsources = J.shape
-
-    # Reshape J to 2D matrix for matrix operation
-    J_reshaped = J.reshape((nz * ny * nx, nt * ndetectors * nsources)).T
-
-    # Flatten dphi to a 1D vector
-    dphi_flattened = dphi.flatten()
-
-    if regularization is None:
-        # Use JAX for the least-squares solution
-        dmua, residuals, rank, s = jnp.linalg.lstsq(
-            J_reshaped, dphi_flattened, rcond=None
-        )
-        error = residuals[0]
-    elif regularization == "TV":
-        dmua, error = least_squares_tv(
-            J, dphi, lambda_tv=0.1, max_iter=1000, learning_rate=0.01
-        )
-    elif regularization == "ridge":
-        dmua, error = ridge_regression(J_reshaped, dphi_flattened, alpha_frac=alpha)
-
-    # Reshape dmua back to the original dimensions
-    dmua_reshaped = dmua.reshape((nz, ny, nx))
-
-    # print in scientific notation
-    print(f"Inversion error: {error:.2e}")
-
-    return dmua_reshaped
-
-
 def ridge_regression(A, y, alpha_frac=1e-4):
     # Transfer data to GPU
     A = device_put(A)
@@ -203,26 +165,79 @@ def error_fn(x, A, b):
 # @jit
 
 
-def least_squares(
-    A, b, lambda_tv=0.1, max_iter=1000, learning_rate=0.01, lambda_l2=1, lambda_l1=1
+def reshape_and_sum(A, grouping_size):
+    """
+    Reshape the array A and sum over the pixels in the group.
+
+    Parameters:
+    A (numpy.ndarray): The input array with shape (nz, ny, nx, nt, ndetectors, nsources).
+    grouping_size (int): The size of the grouping for pixels.
+
+    Returns:
+    numpy.ndarray: The reshaped and summed array.
+    """
+
+    nz, ny, nx, nt, ndetectors, nsources = A.shape
+
+    # Ensure that the dimensions are divisible by grouping_size
+    if nz % grouping_size != 0 or ny % grouping_size != 0 or nx % grouping_size != 0:
+        raise ValueError(
+            "The dimensions of the array are not divisible by the grouping size."
+        )
+
+    # Reshape the array to group the pixels
+    new_shape = (
+        nz // grouping_size,
+        grouping_size,
+        ny // grouping_size,
+        grouping_size,
+        nx // grouping_size,
+        grouping_size,
+        nt,
+        ndetectors,
+        nsources,
+    )
+
+    A_grouped = A.reshape(new_shape)
+
+    # Sum over the grouped pixels (2nd, 4th, and 6th dimensions)
+    A_summed = A_grouped.sum(axis=(1, 3, 5))
+
+    return A_summed
+
+
+def invert(
+    J,
+    dphi,
+    lambda_tv=0.1,
+    max_iter=1000,
+    learning_rate=0.01,
+    lambda_l2=1,
+    lambda_l1=1,
+    voxel_grouping_size=1,
 ):
     """
     Solves the least squares problem with TV regularization using gradient descent.
 
     Args:
-    A (array): Matrix in the linear system Ax = b. Shape: (nz, ny, nx, nt, ndetectors, nsources)
-    b (array): Vector in the linear system Ax = b. Shape: (ndetectors, nt)
+    J (array): Jacobian matrix. Shape: (nz, ny, nx, nt, ndetectors, nsources)
+    dphi (array): Normalized difference between starting and observed data. Shape: (nt, ndetectors)
     lambda_tv (float): Regularization parameter for the TV term.
     max_iter (int): Maximum number of iterations for the optimization.
     learning_rate (float): Learning rate for the optimizer.
+    lambda_l2 (float): Regularization parameter for the L2 term.
+    lambda_l1 (float): Regularization parameter for the L1 term.
 
     Returns:
     x (array): Solution to the regularized least squares problem.
     """
-    nz, ny, nx, nt, ndetectors, nsources = A.shape
+    # sum the data over voxel_grouping_size voxels
+    J = reshape_and_sum(J, voxel_grouping_size)
 
-    A = device_put(A)
-    b = device_put(b)
+    nz, ny, nx, nt, ndetectors, nsources = J.shape
+
+    J = device_put(J)
+    dphi = device_put(dphi)
 
     # Initial guess
     x = jnp.zeros((nz, ny, nx))
@@ -236,14 +251,14 @@ def least_squares(
 
     # Optimization loop
     errors = []
-    errors.append(loss_fn(x, A, b, lambda_tv, lambda_l1, lambda_l2))
-    for i in range(max_iter):
-        grads = grad_loss(x, A, b, lambda_tv, lambda_l1, lambda_l2)
+    errors.append(loss_fn(x, J, dphi, lambda_tv, lambda_l1, lambda_l2))
+    for _ in range(max_iter):
+        grads = grad_loss(x, J, dphi, lambda_tv, lambda_l1, lambda_l2)
         updates, opt_state = optimizer.update(grads, opt_state)
         x = optax.apply_updates(x, updates)
 
         # Compute the error
-        error = loss_fn(x, A, b, lambda_tv, lambda_l1, lambda_l2)
+        error = loss_fn(x, J, dphi, lambda_tv, lambda_l1, lambda_l2)
         errors.append(error)
 
     print(f"Error: {errors[-1]:.2e}")
