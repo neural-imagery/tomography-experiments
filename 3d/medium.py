@@ -38,8 +38,7 @@ class Medium:
         radius = radius_mm / self.grid_resolution_mm
 
         # Create a meshgrid for the array dimensions
-        x, y, z = np.ogrid[0: self.shape[0],
-                           0: self.shape[1], 0: self.shape[2]]
+        x, y, z = np.ogrid[0 : self.shape[0], 0 : self.shape[1], 0 : self.shape[2]]
 
         # Calculate the Euclidean distance from each point in the meshgrid to the center
         distances = np.sqrt(
@@ -71,9 +70,11 @@ class Medium:
             z_slice = self.shape[0] // 2
 
         mua = self.get_mua()
+        mua[self.volume == 0] = np.nan
 
         plt.imshow(mua[z_slice])
         plt.colorbar(label="$\\mu_a \\text{ }[\\text{mm}^{-1}]$")
+        plt.clim(0.018, 0.022)
         if sensors:
             plt.scatter(
                 sensors.det_pos[:, -2],
