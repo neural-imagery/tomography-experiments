@@ -56,12 +56,10 @@ def two_balls_2d_medium(
     )
 
     # set optical properties
-    relative_change = 1 + contrast
-
     g = 0.9  # anisotropy factor
     mua0 = 0.02  # background absorption [1/mm]
     mus0 = 0.67 / (1 - g)  # background scattering [1/mm]
-    mua1 = mua0 * relative_change  # absorption of perturbation [1/mm]
+    mua1 = mua0 * contrast  # absorption of perturbation [1/mm]
     refr_index = 1.4  # refractive index
 
     medium_bg = medium.copy()
