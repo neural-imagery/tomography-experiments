@@ -3,7 +3,7 @@ from medium import Medium
 from sensor_geometry import SensorGeometry
 
 # head constants
-r_head_mm = 70
+HEAD_RADIUS_MM = 70
 
 
 def two_balls_2d_medium(
@@ -34,17 +34,25 @@ def two_balls_2d_medium(
     ny = voxels_per_dim // 2
     nx = voxels_per_dim
     medium = Medium(
-        (nz, ny, nx), metadata=f"contrast={contrast}_separation={ball_separation_mm}_radius={r_ball_mm}_depth={depth_mm}")
+        (nz, ny, nx),
+        metadata=f"contrast={contrast}_separation={ball_separation_mm}_radius={r_ball_mm}_depth={depth_mm}",
+    )
 
     # head
-    medium.add_ball((nz // 2, ny, nx // 2), r_head_mm, 1)
+    medium.add_ball((nz // 2, ny, nx // 2), HEAD_RADIUS_MM, 1)
+
+    y0 = ny - HEAD_RADIUS_MM  # top of the head where the sensors are
 
     # add balls
     medium.add_ball(
-        (nz // 2, depth_mm, nx // 2 - np.floor(ball_separation_mm/2)), r_ball_mm, 2
+        (nz // 2, y0 + depth_mm, nx // 2 - np.floor(ball_separation_mm / 2)),
+        r_ball_mm,
+        2,
     )
     medium.add_ball(
-        (nz // 2, depth_mm, nx // 2 + np.ceil(ball_separation_mm/2)), r_ball_mm, 2
+        (nz // 2, y0 + depth_mm, nx // 2 + np.ceil(ball_separation_mm / 2)),
+        r_ball_mm,
+        2,
     )
 
     # set optical properties
@@ -106,17 +114,16 @@ def two_balls_2d_sensors(noptodes: int, medium: Medium):
     center_point = np.array([0, medium.nx // 2])
     det_pos = (
         scaling_factor
-        * r_head_mm
+        * HEAD_RADIUS_MM
         * np.vstack((np.sin(phi_sensors), np.cos(phi_sensors))).T
         + center_point
     )
     src_pos = (
-        r_head_mm * np.vstack((np.sin(phi_sources), np.cos(phi_sources))).T
+        HEAD_RADIUS_MM * np.vstack((np.sin(phi_sources), np.cos(phi_sources))).T
         + center_point
     )
     src_dirs = center_point - src_pos
-    src_dirs = src_dirs / \
-        np.linalg.norm(src_dirs, axis=1)[:, None]  # normalize
+    src_dirs = src_dirs / np.linalg.norm(src_dirs, axis=1)[:, None]  # normalize
 
     # add a column of zeros to cast as 3D
     src_pos = np.hstack((medium.nz // 2 * np.ones((noptodes, 1)), src_pos))
