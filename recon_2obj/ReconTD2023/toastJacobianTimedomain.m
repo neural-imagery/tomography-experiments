@@ -19,16 +19,24 @@ nsol = hBasis.slen;
 nQ = size(qvec,2);
 nM = size(mvec,2);
 nwin=size(twin,1);
-J = zeros(nQ*nM,2*nsol);  % absorption and diffusion
-rhoaf = zeros(nstep,nsol);
-rhosf = rhoaf;
- 
-jind = 0;
-for q = 1:nQ
+% J = zeros(nQ*nM*nwin,2*nsol);  % absorption and diffusion
+% rhoaf = zeros(nstep,nsol);
+% rhosf = rhoaf;
+
+J = zeros(nQ, nM, nwin, nsol, 2);
+
+% tempJ_cell = cell(1, nQ);
+% jind = 0;
+parfor q = 1:nQ
+    rhoaf = zeros(nstep,nsol);
+    rhosf = rhoaf;
+
     disp(['building Jacobian for source ',num2str(q)]);
+    % tempJ = zeros(nM, 2 * nsol);
     fpq  = fft(tphi(:,:,q),[],1); % Fourier Transform over time variable
     for m = 1:nM
-        jind  = jind+1;
+        % jind  = jind+1;
+        % jind  = (q-1)*nM + m;
         fpam  = fft(taphi(:,:,m),[],1); % Fourier Transform over time variable
         for k = 1:size(fpam,1)
             rhoaf(k,:) = hBasis.Map('M->S',fpq(k,:).*fpam(k,:));
@@ -43,10 +51,22 @@ for q = 1:nQ
         rhoaw=WindowTPSF(rhoat,twin);
         rhost = ifft(rhosf,[],1); % time domain PMDF for diffusion
         rhosw=WindowTPSF(rhost,twin);
-        for w = 1:nwin
-            J((w-1)*nQ*nM + jind,1:nsol)        = rhoaw(w,:);%toastMapMeshToSol(hBasis,rhoaw(w,:));
-            J((w-1)*nQ*nM + jind,nsol+1:2*nsol) = rhosw(w,:);%toastMapMeshToSol(hBasis,rhosw(w,:));
-        end
+        % for w = 1:nwin
+        %     % J((w-1)*nQ*nM + jind,1:nsol)        = rhoaw(w,:);%toastMapMeshToSol(hBasis,rhoaw(w,:));
+        %     % J((w-1)*nQ*nM + jind,nsol+1:2*nsol) = rhosw(w,:);%toastMapMeshToSol(hBasis,rhosw(w,:));
+        %     tempJ(m, 1:nsol)        = rhoaw(w,:);
+        %     tempJ(m, nsol+1:2*nsol) = rhosw(w,:);
+        % end
+        % J(q,m,:,:,1) = rhoaw;
+        % J(q,m,:,:,2) = rhosw;
+        J(q,m,:,:,:) = cat(5, rhoaw, rhosw);
     end
+    % tempJ_cell{q} = tempJ;
 end
 
+% change back shape of J
+J = reshape(J, nQ*nM*nwin, 2 * nsol);
+
+% for q = 1:nQ
+%     J((q-1)*nM*nwin + 1:q*nM*nwin, :) = tempJ_cell{q};
+% end
