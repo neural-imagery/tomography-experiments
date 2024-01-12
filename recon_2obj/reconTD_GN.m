@@ -29,12 +29,12 @@ mus0   = 0.67;               % background scattering [1/mm];
 % temporal parameters
 dt    = 20;  % time step in picoseconds
 nstep = 256; % number of time steps
-ww    = 32;  % -> 7 time bins of width 32 (in units of time-step)
+ww    = 16;  % -> 7 time bins of width 32 (in units of time-step)
 twin  = zeros(nstep/ww-1,2); twin(1:nstep/ww-1,1) = [1:ww:(nstep-ww)]';
 twin(:,2) = twin(:,1)+ww-1;
 nwin  = size(twin,1);
 
-bx = 512; by = 512; % solution basis: grid dimension
+bx = 70; by = 70; % solution basis: grid dimension
 
 % optimization parameters
 tau    = 1e-2; % regularisation parameter
@@ -88,10 +88,10 @@ dx = 2*rad/bx; dy = 2*rad/by;
 mua = ones(n,1) * mua0; mus = ones(n,1) * mus0; ref = ones(n,1) * refind;
 kap = 1./(3*(mua+mus));
 
-swidth    = round(square_width/dx);
-s1x_start = round(bx/2 - (separation/2)/dx - swidth/2);
-s2x_start = round(bx/2 + (separation/2)/dx - swidth/2);
-sy_start  = round(by-depth/dy-swidth); 
+swidth    = round(square_width/dx) - 1;
+s1x_start = round((bx/2 + 1) - (separation/2)/dx - swidth/2);
+s2x_start = round((bx/2 + 1) + (separation/2)/dx - swidth/2);
+sy_start  = round(by-depth/dy-swidth/2);
 
 muaim = zeros(bx,by); musim = muaim;
 muaim(s1x_start:s1x_start+swidth, sy_start:sy_start+swidth) = change*mua0;

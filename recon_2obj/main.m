@@ -1,9 +1,9 @@
 %% Main script to test different recon configurations
 
-mode         = 'TD'; % continuous wave (CW) or time domain (TD) mode
-depth        = 10;   % depth of the squares from surface [mm]
-separation   = 5;   % distance between squares (of same width) [mm]
-square_width = 2;    % width of squares [mm]
+mode         = 'CW'; % continuous wave (CW) or time domain (TD) mode
+depth        = 20;   % depth of the squares from surface [mm]
+separation   = 28;   % distance between squares (of same width) [mm]
+square_width = separation/2;    % width of squares [mm]
 change       = 2;    % change in optical properties
 nopt         = 10;   % number of sources (and detectors)
 
