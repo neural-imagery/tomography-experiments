@@ -4,7 +4,8 @@ The goal of tomography is to turn primitive fNIRS sensor measurements into a map
 
 ## Folder structure
 
-* `recon_2obj` includes **TOAST++** simulation code for a simple 2D reconstruction for both continuous wave (CW) and time-domain (TD) fNIRS systems.
+* `3d` uses Monte Carlo photon transport to run tomography in 3D
+* `recon_2obj` includes TOAST++ simulation code for a simple 2D reconstruction for both continuous wave (CW) and time-domain (TD) fNIRS systems.
 * `fmri2fnirs` includes a pipeline for turning fMRI data into pseudo-fNIRS data and apply it to the Natural Scenes Dataset (NSD).
 
 ### Installation
