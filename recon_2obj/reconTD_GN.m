@@ -45,7 +45,7 @@ tol    = 1e-4;
 maxit  = 100; % Krulov solver max. iterations (inside each GN iteration)
 
 % Make the save directory if it doesn't exist
-dirName = sprintf('results/circle_two_squares/depth=%d_separation=%d_square_width=%d_change=%d_nopt=%d_ww=%d', depth, separation, square_width, change, nopt,ww);
+dirName = sprintf('results/circle_two_squares_good_depth/depth=%d_separation=%d_square_width=%d_change=%d_nopt=%d_ww=%d', depth, separation, square_width, change, nopt,ww);
 
 if ~exist(dirName, 'dir')
   mkdir(dirName);
@@ -99,7 +99,7 @@ kap = 1./(3*(mua+mus));
 swidth    = round(square_width/dx) - 1;
 s1x_start = round((bx/2 + 1) - (separation/2)/dx - swidth/2);
 s2x_start = round((bx/2 + 1) + (separation/2)/dx - swidth/2);
-sy_start  = round(by-depth/dy-swidth/2);
+sy_start  = round(by-depth/dy - swidth);
 
 muaim = zeros(bx,by); musim = muaim;
 muaim(s1x_start:s1x_start+swidth, sy_start:sy_start+swidth) = change*mua0;
@@ -111,6 +111,8 @@ mua1 = mua + hBasis.Map('B->M',muaim);
 mus1 = mus + hBasis.Map('B->M',musim);
 
 figure(2); clf;
+% change figure window title to the dirname
+set(gcf,'Name',dirName);
 
 % Display target absorption
 subplot(2,2,1); 
@@ -143,6 +145,9 @@ proj = reshape(WindowTPSF(proj,twin)',[],1); % single vector of data, ordered by
 sd = proj; % Assume standard deviation equal to data
 
 figure(3); clf; sgtitle('initial error')
+% change figure window title to the dirname
+set(gcf,'Name',dirName);
+
 for w = 1:min(nwin,8)
     dl = reshape(data((w-1)*nM*nQ+1:w*nM*nQ)-proj((w-1)*nM*nQ+1:(w)*nM*nQ),nM,nQ);
     subplot(2,4,w); imagesc(dl);
@@ -287,6 +292,8 @@ end
     end
 
 figure(4); clf; sgtitle('final error')
+% change figure window title to the dirname
+set(gcf,'Name',dirName);
 for w = 1:min(nwin,8)
     dl = reshape(data((w-1)*nM*nQ+1:w*nM*nQ)-proj((w-1)*nM*nQ+1:(w)*nM*nQ),nM,nQ);
     subplot(2,4,w); imagesc(dl);
