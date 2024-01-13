@@ -1,15 +1,12 @@
-%% MATLAB-TOAST sample script:
 % Time Domain Image reconstruction with Gauss-Newton solver
-% version adds noise, and uses lower resolution reconstruction mesh
 %
 % This version uses time window binning
 % 
-% Author : Simon Arridge 09-Sept-2023
-% ======================================================================
-% User-defined parameters
-% ======================================================================
+% Original Author : Simon Arridge
+% Modified by: Thomas Ribeiro, Stephen Fay, Raffi Hotter
 
-function reconTD_GN(depth, separation, square_width, change, nopt)
+function reconTD_GN(depth, separation, square_width, change, nopt, ww)
+
 
 %% 0. Define parameters
 
@@ -29,8 +26,11 @@ mus0   = 0.67;               % background scattering [1/mm];
 % temporal parameters
 dt    = 20;  % time step in picoseconds
 nstep = 256; % number of time steps
-ww    = 16;  % -> 7 time bins of width 32 (in units of time-step)
-twin  = zeros(nstep/ww-1,2); twin(1:nstep/ww-1,1) = [1:ww:(nstep-ww)]';
+if nargin < 6
+    ww = 32;  % default value for ww -> 7 time bins of width 32 (in units of time-step)
+end
+twin  = zeros(nstep/ww-1,2);
+twin(1:nstep/ww-1,1) = [1:ww:(nstep-ww)]';
 twin(:,2) = twin(:,1)+ww-1;
 nwin  = size(twin,1);
 
@@ -42,7 +42,14 @@ beta   = 0.01; % TV regularisation parameter
 GNtol  = 5e-6; % Gauss-Newton convergence criterion
 itrmax = 20;   % Gauss-Newton max. iterations
 tol    = 1e-4;
-maxit  = 100;
+maxit  = 100; % Krulov solver max. iterations (inside each GN iteration)
+
+% Make the save directory if it doesn't exist
+dirName = sprintf('results/circle_two_squares/depth=%d_separation=%d_square_width=%d_change=%d_nopt=%d_ww=%d', depth, separation, square_width, change, nopt,ww);
+
+if ~exist(dirName, 'dir')
+  mkdir(dirName);
+end
 
 %% 1. Define the target mesh
 [vtx,idx,eltp] = mkcircle(rad,nsect,nring,nbnd);
@@ -77,6 +84,7 @@ plot(source(:,1),source(:,2),'ro','MarkerFaceColor','r');
 plot(sensor(:,1),sensor(:,2),'bsquare','MarkerFaceColor','b');
 hold off
 legend('','Source', 'Sensor');
+saveas(gcf, fullfile(dirName, '/sensors.png'));
 
 %% 3. Assign optical properties
 
@@ -103,8 +111,23 @@ mua1 = mua + hBasis.Map('B->M',muaim);
 mus1 = mus + hBasis.Map('B->M',musim);
 
 figure(2); clf;
-subplot(2,2,1); hMesh.Display(mua1); axis off; title('\mu_a target');
-subplot(2,2,2); hMesh.Display(mus1); axis off; title('\mu_s target');
+
+% Display target absorption
+subplot(2,2,1); 
+hMesh.Display(mua1); 
+axis off;
+title('\mu_a target');
+ax1 = gca; % Get current axes for absorption
+colorLimitsMua = ax1.CLim; % Store the color scale for absorption
+
+
+% Display target scattering
+subplot(2,2,2); 
+axis off;
+hMesh.Display(mus1); 
+title('\mu_s target');
+ax2 = gca; % Get current axes for scattering
+colorLimitsMus = ax2.CLim; % Store the color scale for scattering
 
 %% 4. Generate target data
 
@@ -126,8 +149,20 @@ for w = 1:min(nwin,8)
 end
 
 figure(2);
-subplot(2,2,3); hMesh.Display(mua); axis off; title('\mu_a target');
-subplot(2,2,4); hMesh.Display(mus); axis off; title('\mu_s target');
+
+% Display reconstructed absorption
+subplot(2,2,3); 
+hMesh.Display(mua); 
+title('\mu_a recon');
+ax3 = gca; % Get current axes for reconstructed absorption
+% ax3.CLim = colorLimitsMua; % Apply the same color scale
+
+% Display reconstructed scattering
+subplot(2,2,4); 
+hMesh.Display(mus); 
+title('\mu_s recon');
+ax4 = gca; % Get current axes for reconstructed scattering
+% ax4.CLim = colorLimitsMus; % Apply the same color scale
 
 % map initial estimate of the solution vector
 bmua = hBasis.Map ('M->B', mua); bcmua = bmua*cm; scmua = hBasis.Map ('B->S', bcmua);
@@ -151,6 +186,7 @@ itr = 1; step = 0.02;
 fprintf('Iteration %d, objective %f\n', 0, err);
 
 %% 6. Run the inverse loop solver
+errs = [err0]; % store the errors
 
 % Gauss-Newton loop
 %itrmax = 1;
@@ -203,14 +239,34 @@ while (itr <= itrmax) & (err > GNtol*err0) & (errp-err > GNtol)
     sckap = x(size(x)/2+1:size(x)); skap = sckap/cm;  
     smus = 1./(3*skap) - smua; mus = hBasis.Map ('S->M', smus);
     figure(2);
-    subplot(2,2,3); hMesh.Display(mua); axis off; title('\mu_a recon');
-    subplot(2,2,4); hMesh.Display(mus); axis off; title('\mu_s recon');
+
+    % Display reconstructed absorption
+    subplot(2,2,3); 
+    hMesh.Display(mua); 
+    axis off;
+    title('\mu_a recon');
+    ax3 = gca; % Get current axes for reconstructed absorption
+    % ax3.CLim = colorLimitsMua; % Apply the same color scale
+
+    % Display reconstructed scattering
+    subplot(2,2,4); 
+    hMesh.Display(mus); 
+    axis off;
+    title('\mu_s recon');
+    ax4 = gca; % Get current axes for reconstructed scattering
+    % ax4.CLim = colorLimitsMus; % Apply the same color scale
+    % save the files
+    saveas(gcf, fullfile(dirName, 'recon.png'));
+    saveas(gcf, fullfile(dirName, 'recon.fig'));
 
     [proj,t] = toastProjectTPSF(hMesh, mua, mus, ref, qvec, mvec,dt,nstep);
     proj = reshape(WindowTPSF(proj,twin)',[],1); % single vector of data, ordered by time gate.
     fprintf (1, '**** GN ITERATION %d, ERROR %f\n\n', itr, err);
     itr = itr+1;
     drawnow
+
+    % Store the error
+    errs = [errs err];
 end
 
     function p = objective(x)
@@ -235,10 +291,16 @@ for w = 1:min(nwin,8)
     dl = reshape(data((w-1)*nM*nQ+1:w*nM*nQ)-proj((w-1)*nM*nQ+1:(w)*nM*nQ),nM,nQ);
     subplot(2,4,w); imagesc(dl);
 end
-path = 'results/circle_two_squares/TD/';
-filename = 'recon_'+string(depth)+'_'+string(separation)+'_'+string(square_width)+'_'+string(change)+'_'+string(nopt);
-save(path + filename + '.mat');
-saveas(gcf, path + filename + '.fig');
+
+% save the variables
+save(fullfile(dirName, 'data.mat'));
 % figure; plot(fvals); xlabel('Iteration No.'); ylabel('Objective function values');
 % save -v7.3 Jrecon J data y;
+
+% plot the errors and save them
+figure(5); clf;
+semilogy(errs);
+xlabel('Iteration No.'); ylabel('Objective function values');
+saveas(gcf, fullfile(dirName, 'errors.fig'));
+
 end
