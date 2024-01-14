@@ -1,6 +1,6 @@
 *.asv
 *.pyc
-recon_2obj/results/
+# recon_2obj/results/
 fmri2fnirs/data/
 fslinstaller.py
 __pycache__
