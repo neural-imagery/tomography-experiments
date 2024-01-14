@@ -5,14 +5,16 @@
 % Original Author : Simon Arridge
 % Modified by: Thomas Ribeiro, Stephen Fay, Raffi Hotter
 
-function reconTD_GN(depth, separation, square_width, change, nopt, ww)
+function reconTD_GN(depth, separation, square_width, change, nopt, ww, nsect)
 
 
 %% 0. Define parameters
 
 % mesh parameters
 rad   = 70; % mesh radius [mm]
-nsect = 6;  % number of sectors
+if nargin < 7
+    nsect = 6; % number of sectors
+end
 nring = 32; % number of rings
 nbnd  = 2;  % number of boundary rings
 
@@ -25,7 +27,7 @@ mus0   = 0.67;               % background scattering [1/mm];
 
 % temporal parameters
 dt    = 20;  % time step in picoseconds
-nstep = 256; % number of time steps
+nstep = 512; % number of time steps
 if nargin < 6
     ww = 32;  % default value for ww -> 7 time bins of width 32 (in units of time-step)
 end
@@ -45,7 +47,7 @@ tol    = 1e-4;
 maxit  = 100; % Krulov solver max. iterations (inside each GN iteration)
 
 % Make the save directory if it doesn't exist
-dirName = sprintf('results/circle_two_squares_good_depth/depth=%d_separation=%d_square_width=%d_change=%d_nopt=%d_ww=%d', depth, separation, square_width, change, nopt,ww);
+dirName = sprintf('results/circle_two_squares_good_depth/depth=%d_separation=%d_square_width=%d_change=%d_nopt=%d_ww=%d_nsect=%d', depth, separation, square_width, change, nopt,ww,nsect);
 
 if ~exist(dirName, 'dir')
   mkdir(dirName);
