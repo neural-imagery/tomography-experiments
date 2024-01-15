@@ -1,4 +1,4 @@
-function [mua_bg, mua1, mus_bg, mus1, kap_bg, ref, qvec, mvec, hMesh, cm] = twoSquaresMedium()
+function [mua_bg, mua1, mus_bg, mus1, kap_bg, ref, qvec, mvec, hMesh, cm] = twoSquaresMedium(nopt)
 % twoSquaresMedium
 %
 % This function creates a two-dimensional simulation environment for 

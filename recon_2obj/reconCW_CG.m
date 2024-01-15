@@ -10,7 +10,7 @@ tolCG  = 1e-8; % CG convergence criterion
 itrmax = 100;   % CG max. iterations
 
 % Get the medium
-[mua, mua1, mus, mus1, kap, ref, qvec, mvec, hMesh, cm] = twoSquaresMedium();
+[mua, mua1, mus, mus1, kap, ref, qvec, mvec, hMesh, cm] = twoSquaresMedium(nopt);
 
 %% ---------
 
