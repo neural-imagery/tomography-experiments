@@ -93,10 +93,10 @@ dx = 2*rad/bx; dy = 2*rad/by;
 mua_bg = ones(n,1) * mua0; mus_bg = ones(n,1) * mus0; ref = ones(n,1) * refind;
 kap_bg = 1./(3*(mua_bg+mus_bg));
 
-swidth    = round(square_width/dx);
-s1x_start = round(bx/2 - (separation/2)/dx - swidth/2);
-s2x_start = round(bx/2 + (separation/2)/dx - swidth/2);
-sy_start  = round(by-depth/dy-swidth/2);
+swidth    = round(square_width/dx) - 1;
+s1x_start = round((bx/2 + 1) - (separation/2)/dx - swidth/2);
+s2x_start = round((bx/2 + 1) + (separation/2)/dx - swidth/2);
+sy_start  = round(by-depth/dy - swidth);
 
 muaim = zeros(bx,by); musim = muaim;
 muaim(s1x_start:s1x_start+swidth, sy_start:sy_start+swidth) = change*mua0;
