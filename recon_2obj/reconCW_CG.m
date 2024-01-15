@@ -92,9 +92,9 @@ while (itr <= itrmax) && (err > tolCG*err0) && (errp-err > tolCG)
     step = toastLineSearch(x, d, step, err, @objective);
     x = x + d*step;
     
-    % smua = x(1:size(x)/2)/cm; mua = hBasis.Map ('S->M', smua);
-    % skap = x(size(x)/2+1:size(x))/cm; 
-    % smus = 1./(3*skap) - smua; mus = hBasis.Map ('S->M', smus);
+    smua = x(1:size(x)/2)/cm; mua = hBasis.Map ('S->M', smua);
+    skap = x(size(x)/2+1:size(x))/cm; 
+    smus = 1./(3*skap) - smua; mus = hBasis.Map ('S->M', smus);
     
     figure(2);
     subplot(2,2,3); hMesh.Display(mua); axis off; title('\mu_a recon');
