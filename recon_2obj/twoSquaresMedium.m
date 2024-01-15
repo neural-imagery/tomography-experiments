@@ -1,4 +1,4 @@
-function [mua_bg, mua1, mus_bg, mus1, kap_bg, ref, qvec, mvec, hMesh, cm] = twoSquaresMedium(nopt)
+function [mua_bg, mua1, mus_bg, mus1, kap_bg, ref, qvec, mvec, hMesh, hBasis, cm] = twoSquaresMedium(depth, separation, square_width, change, nopt)
 % twoSquaresMedium
 %
 % This function creates a two-dimensional simulation environment for 
@@ -6,6 +6,13 @@ function [mua_bg, mua1, mus_bg, mus1, kap_bg, ref, qvec, mvec, hMesh, cm] = twoS
 % with specified parameters and sets up a problem with two square anomalies 
 % in optical properties. The function outputs various parameters and objects 
 % necessary for further simulation and inverse problem solving in optical tomography.
+% 
+% Parameters:
+%   depth           - Depth of the anomalies [mm]
+%   separation      - Separation between the anomalies [mm]
+%   square_width    - Width of the square anomalies [mm]
+%   change          - Relative change in optical properties of the anomalies
+%   nopt            - Number of sources and detectors
 %
 % Outputs:
 %   mua_bg  - Background absorption coefficient matrix
@@ -27,6 +34,8 @@ function [mua_bg, mua1, mus_bg, mus1, kap_bg, ref, qvec, mvec, hMesh, cm] = twoS
 %
 % Example usage:
 %   [mua_bg, mua1, mus_bg, mus1, kap_bg, ref, qvec, mvec, hMesh, cm] = twoSquaresMedium();  
+
+figure;
 
 % mesh parameters
 rad   = 70; % mesh radius [mm]
