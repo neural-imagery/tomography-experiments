@@ -3,6 +3,13 @@
 
 function reconCW_CG(depth, separation, square_width, change, nopt)
 
+% Make the save directory if it doesn't exist
+dirName = sprintf('results/circle_two_squares_good_depth/cw_depth=%d_separation=%d_square_width=%d_change=%d_nopt=%d', depth, separation, square_width, change, nopt);
+
+if ~exist(dirName, 'dir')
+  mkdir(dirName);
+end
+
 % optimization parameters
 tau    = 1e-2; % regularisation parameter
 beta   = 0.01; % TV regularisation parameter
@@ -10,7 +17,7 @@ tolCG  = 1e-8; % CG convergence criterion
 itrmax = 100;   % CG max. iterations
 
 % Get the medium
-[mua, mua1, mus, mus1, kap, ref, qvec, mvec, hMesh, cm] = twoSquaresMedium(nopt);
+[mua, mua1, mus, mus1, kap, ref, qvec, mvec, hMesh, hBasis, cm] = twoSquaresMedium(depth, separation, square_width, change, nopt);
 
 %% ---------
 
@@ -109,10 +116,9 @@ end
     end
 
 figure(3); subplot(1,2,2); imagesc(reshape(data-proj,nopt,nopt)); axis equal tight; colorbar; title('final error');
-path = 'results/circle_two_squares/CG/';
 filename = 'recon_'+string(depth)+'_'+string(separation)+'_'+string(square_width)+'_'+string(change)+'_'+string(nopt);
-save(path + filename + '.mat');
-saveas(gcf, path + filename + '.fig');
+save(fullfile(dirName, filename + '.mat'));
+saveas(gcf, fullfile(dirName + filename + '.fig'));
 % figure; plot(fvals); xlabel('Iteration No.'); ylabel('Objective function values');
 
 end
