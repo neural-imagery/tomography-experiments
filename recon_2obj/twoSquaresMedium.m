@@ -1,4 +1,4 @@
-function [mua_bg, mua1, mus_bg, mus1, kap_bg, ref, qvec, mvec, hMesh, hBasis, cm] = twoSquaresMedium(depth, separation, square_width, change, nopt)
+function [mua_bg, mua1, mus_bg, mus1, kap_bg, ref, qvec, mvec, hMesh, hBasis, cm, grd] = twoSquaresMedium(depth, separation, square_width, change, nopt)
 % twoSquaresMedium
 %
 % This function creates a two-dimensional simulation environment for 
@@ -51,6 +51,7 @@ mua0   = 0.02;               % background absorption [1/mm]
 mus0   = 0.67;               % background scattering [1/mm];
 
 bx = 64; by = 64; % solution basis: grid dimension
+grd = [bx by];    % solution basis: grid size
 
 %% 1. Define the target mesh
 [vtx,idx,eltp] = mkcircle(rad,nsect,nring,nbnd);

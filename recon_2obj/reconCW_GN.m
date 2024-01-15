@@ -1,4 +1,6 @@
-function recon_gn
+function reconCW_GN(depth, separation, square_width, change, nopt)
+
+close all;
 
 disp('MATLAB-TOAST sample script:')
 disp('2D image reconstruction with Gauss-Newton solver')
@@ -8,16 +10,18 @@ disp('-------------------------------------------------------')
 % User-defined parameters
 % ======================================================================
 verbosity = 1;
-meshdir = '../../test/2D/meshes/';       % example mesh repository
-qmname  = [meshdir 'circle25_32x32.qm']; % source-detector definitions
-fwdmesh = [meshdir 'ellips_tri10.msh'];  % mesh for data generation
-invmesh = [meshdir 'circle25_32.msh'];   % mesh for inverse solver forward model
+% meshdir = '../../test/2D/meshes/';       % example mesh repository
+% qmname  = [meshdir 'circle25_32x32.qm']; % source-detector definitions
+% fwdmesh = [meshdir 'ellips_tri10.msh'];  % mesh for data generation
+% invmesh = [meshdir 'circle25_32.msh'];   % mesh for inverse solver forward model
 
-refind = 1.4;                           % refractive index
+% refind = 1.4;                           % refractive index
 
-grd = [100 100];                        % solution basis: grid dimension
-freq = 100;                             % modulation frequency [MHz]
-noiselevel = 0.01;                      % additive data noise level
+[mua, mua1, mus, mus1, kap, ref, qvec, mvec, hMesh, hBasis, cm, grd] = twoSquaresMedium(depth, separation, square_width, change, nopt);
+
+% grd = [100 100];                        % solution basis: grid dimension
+freq = 0;                             % modulation frequency [MHz]
+% noiselevel = 0;                      % additive data noise level
 tau = 1e-3;                             % regularisation parameter
 beta = 0.01;                            % TV regularisation parameter
 tolGN = 1e-5;                           % Gauss-Newton convergence criterion
@@ -33,24 +37,24 @@ cmap = 'gray';
 % Initialisations
 %toastCatchErrors();                     % redirect toast library errors
 toastSetVerbosity(verbosity);           % output verbosity level
-c0 = 0.3;                               % lightspeed in vacuum [mm/ps]
-cm = c0/refind;                         % lightspeed in medium
+% c0 = 0.3;                               % lightspeed in vacuum [mm/ps]
+% cm = c0/refind;                         % lightspeed in medium
 
 %% Generate target data
 
-hmesh = toastMesh(fwdmesh);             % load FEM mesh from file
-hmesh.ReadQM(qmname);                   % add source-detector descriptions
-n = hmesh.NodeCount();                  % number of nodes
-dmask = hmesh.DataLinkList();           % source-detector connectivity
+% hmesh = toastMesh(fwdmesh);             % load FEM mesh from file
+% hmesh.ReadQM(qmname);                   % add source-detector descriptions
+% n = hmesh.NodeCount();                  % number of nodes
+dmask = hMesh.DataLinkList();           % source-detector connectivity
 
-mua = toastNim([meshdir 'tgt_mua_ellips_tri10.nim']); % target absorption
-mus = toastNim([meshdir 'tgt_mus_ellips_tri10.nim']); % target scattering
-ref = ones(n,1)*refind;   % target refractive index (homogeneous)
+% mua = toastNim([meshdir 'tgt_mua_ellips_tri10.nim']); % target absorption
+% mus = toastNim([meshdir 'tgt_mus_ellips_tri10.nim']); % target scattering
+% ref = ones(n,1)*refind;   % target refractive index (homogeneous)
 
-qvec = hmesh.Qvec ('Neumann', 'Gaussian', 2); % source specification
-mvec = hmesh.Mvec ('Gaussian', 2, ref);       % detector specification
+% qvec = hmesh.Qvec ('Neumann', 'Gaussian', 2); % source specification
+% mvec = hmesh.Mvec ('Gaussian', 2, ref);       % detector specification
 
-smat = dotSysmat (hmesh, mua, mus, ref, freq);% compute FEM system matrix
+smat = dotSysmat (hMesh, mua1, mus1, ref, freq);% compute FEM system matrix
 phi = full (smat\qvec);                       % solve linear FEM problem for photon density
 
 lgamma = reshape (log(mvec.' * phi), [], 1);  % map to measurements
@@ -59,17 +63,17 @@ mdata = real(lgamma);                         % log amplitude data
 pdata = imag(lgamma);                         % phase data
 
 % add some noise
-mdata = mdata + mdata.*noiselevel.*randn(size(mdata));
-pdata = pdata + pdata.*noiselevel.*randn(size(pdata));
+% mdata = mdata + mdata.*noiselevel.*randn(size(mdata));
+% pdata = pdata + pdata.*noiselevel.*randn(size(pdata));
 data = [mdata;pdata];                               % linear data vector
 m = length(data);                                   % number of measurement data
 
 % display the target parameter distributions for comparison
 muarng = [min(mua)*0.9, max(mua)*1.1];
 musrng = [min(mus)*0.9, max(mus)*1.1];
-hbasis = toastBasis(hmesh,grd);
-muatgt_img = reshape (hbasis.Map ('M->B', mua), grd);
-mustgt_img = reshape (hbasis.Map ('M->B', mus), grd);
+% hBasis = toastBasis(hMesh,grd);
+muatgt_img = reshape (hBasis.Map ('M->B', mua), grd);
+mustgt_img = reshape (hBasis.Map ('M->B', mus), grd);
 mua_img = [muatgt_img, zeros(size(muatgt_img))];
 mus_img = [mustgt_img, zeros(size(mustgt_img))];
 
@@ -91,28 +95,28 @@ drawnow
 %% Inverse solver
 
 % Read a TOAST mesh definition from file.
-hmesh = toastMesh (invmesh);                        % read inverse solver mesh
-hmesh.ReadQM (qmname);                              % add source/detector descriptions
-n = hmesh.NodeCount ();                             % number of nodes
-dmask = hmesh.DataLinkList ();                      % source-detector connectivity
+% hmesh = toastMesh (invmesh);                        % read inverse solver mesh
+% hmesh.ReadQM (qmname);                              % add source/detector descriptions
+% n = hmesh.NodeCount ();                             % number of nodes
+dmask = hMesh.DataLinkList ();                      % source-detector connectivity
 
 % Set up homogeneous initial parameter estimates
-mua = ones(n,1) * 0.025;                            % initial mua estimate
-mus = ones(n,1) * 2;                                % initial mus estimate
-ref = ones(n,1) * refind;                           % refractive index estimate
-kap = 1./(3*(mua+mus));                             % diffusion coefficient
+% mua = ones(n,1) * 0.025;                            % initial mua estimate
+% mus = ones(n,1) * 2;                                % initial mus estimate
+% ref = ones(n,1) * refind;                           % refractive index estimate
+% kap = 1./(3*(mua+mus));                             % diffusion coefficient
 
-% Set up the mapper between FEM and solution bases
-hbasis = toastBasis (hmesh, grd, 'LINEAR');         % maps between mesh and reconstruction basis
+% % Set up the mapper between FEM and solution bases
+% hbasis = toastBasis (hmesh, grd, 'LINEAR');         % maps between mesh and reconstruction basis
 
-% Generate source vectors
-qvec = hmesh.Qvec ('Neumann', 'Gaussian', 2);       % nodal source vectors
+% % Generate source vectors
+% qvec = hmesh.Qvec ('Neumann', 'Gaussian', 2);       % nodal source vectors
 
-% Generate measurement vectors
-mvec = hmesh.Mvec ('Gaussian', 2, ref);             % nodal measurement vectors
+% % Generate measurement vectors
+% mvec = hmesh.Mvec ('Gaussian', 2, ref);             % nodal measurement vectors
 
 % Initial data set f[x0]
-smat = dotSysmat (hmesh, mua, mus, ref, freq);      % FEM system matrix
+smat = dotSysmat (hMesh, mua, mus, ref, freq);      % FEM system matrix
 lgamma = reshape (log(mvec.' * (smat\qvec)), [], 1);% solve for photon density and map to boundary measurements
 lgamma = lgamma(dmask);                             % remove unused source-detector combinations
 mproj = real(lgamma);                               % log amplitude data
@@ -125,13 +129,13 @@ psd = ones(size(lgamma)) * norm(pdata-pproj);       % scale phase data with data
 sd = [msd;psd];                                     % linear scaling vector
 
 % map initial parameter estimates to solution basis
-bmua = hbasis.Map ('M->B', mua);                    % mua mapped to full grid
-bmus = hbasis.Map ('M->B', mus);                    % mus mapped to full grid
-bkap = hbasis.Map ('M->B', kap);                    % kap mapped to full grid
+bmua = hBasis.Map ('M->B', mua);                    % mua mapped to full grid
+bmus = hBasis.Map ('M->B', mus);                    % mus mapped to full grid
+bkap = hBasis.Map ('M->B', kap);                    % kap mapped to full grid
 bcmua = bmua*cm;                                    % scale parameters with speed of light
 bckap = bkap*cm;                                    % scale parameters with speed of light
-scmua = hbasis.Map ('B->S', bcmua);                 % map to solution basis
-sckap = hbasis.Map ('B->S', bckap);                 % map to solution basis
+scmua = hBasis.Map ('B->S', bcmua);                 % map to solution basis
+sckap = hBasis.Map ('B->S', bckap);                 % map to solution basis
 
 % solution vector
 x = [scmua;sckap];                                  % linea solution vector
@@ -139,7 +143,7 @@ logx = log(x);                                      % transform to log
 p = length(x);                                      % solution vector dimension
 
 % Initialise regularisation
-hreg = toastRegul ('TV', hbasis, logx, tau, 'Beta', beta);
+hreg = toastRegul ('TV', hBasis, logx, tau, 'Beta', beta);
 
 % initial data error (=2 due to data scaling)
 err0 = toastObjective (proj, data, sd, hreg, logx); %initial error
@@ -157,7 +161,7 @@ while (itr <= itrmax) && (err > tolGN*err0) && (errp-err > tolGN)
     
     % Construct the Jacobian
     fprintf (1,'Calculating Jacobian\n');
-    J = toastJacobian (hmesh, hbasis, qvec, mvec, mua, mus, ref, freq, 'direct');
+    J = toastJacobian (hMesh, hBasis, qvec, mvec, mua, mus, ref, freq, 'direct');
 
     % data normalisation
     for i = 1:m
@@ -219,10 +223,10 @@ while (itr <= itrmax) && (err > tolGN*err0) && (errp-err > tolGN)
     smua = scmua/cm;
     skap = sckap/cm;
     smus = 1./(3*skap) - smua;
-    mua = hbasis.Map ('S->M', smua);
-    mus = hbasis.Map ('S->M', smus);
-    bmua = hbasis.Map ('S->B', smua);
-    bmus = hbasis.Map ('S->B', smus);
+    mua = hBasis.Map ('S->M', smua);
+    mus = hBasis.Map ('S->M', smus);
+    bmua = hBasis.Map ('S->B', smua);
+    bmus = hBasis.Map ('S->B', smus);
 
     % display the reconstructions
     subplot(2,2,1);
@@ -241,7 +245,7 @@ while (itr <= itrmax) && (err > tolGN*err0) && (errp-err > tolGN)
     set(gca,'Position',[0.01 0.05 0.4 0.4]);
     
     % update projection from current parameter estimate
-    proj = toastProject (hmesh, mua, mus, ref, freq, qvec, mvec);
+    proj = toastProject (hMesh, mua, mus, ref, freq, qvec, mvec);
 
     % update objective function
     err = toastObjective (proj, data, sd, hreg, logx);
@@ -265,8 +269,8 @@ disp('recon2: finished')
     % Callback function for objective evaluation (called by toastLineSearch)
     function p = objective(x)
 
-    [mua,mus] = dotXToMuaMus (hbasis, exp(x), ref);
-    proj = toastProject (hmesh, mua, mus, ref, freq, qvec, mvec);
+    [mua,mus] = dotXToMuaMus (hBasis, exp(x), ref);
+    proj = toastProject (hMesh, mua, mus, ref, freq, qvec, mvec);
     [p, p_data, p_prior] = toastObjective (proj, data, sd, hreg, x);
     if verbosity > 0
         fprintf (1, '    [LH: %f, PR: %f]\n', p_data, p_prior);
