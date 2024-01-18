@@ -1,6 +1,4 @@
 %% Diffuse Optical Tomography (DOT) reconstruction - CW mode with CG method
-% www.neuralimagery.com
-
 function reconCW_CG(depth, separation, square_width, change, nopt)
 
 % Make the save directory if it doesn't exist
